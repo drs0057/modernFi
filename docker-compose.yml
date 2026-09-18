@@ -16,5 +16,18 @@ services:
       timeout: 3s
       retries: 10
 
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgres://modernfi:modernfi@postgres:5432/modernfi
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src
+
 volumes:
   pgdata:
