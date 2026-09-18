@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
-import { getYieldCurve } from './api';
-import { YieldCurve } from './types';
+import { getOrders, getYieldCurve, submitOrder } from './api';
+import { Order, YieldCurve } from './types';
 import YieldCurveChart from './components/YieldCurveChart';
+import OrderForm from './components/OrderForm';
+import OrderHistory from './components/OrderHistory';
 
 export default function App() {
   const [curve, setCurve] = useState<YieldCurve | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   async function loadCurve() {
@@ -15,9 +18,19 @@ export default function App() {
     }
   }
 
+  async function loadOrders() {
+    setOrders(await getOrders());
+  }
+
   useEffect(() => {
     loadCurve();
+    loadOrders();
   }, []);
+
+  async function handleOrderSubmitted(term: string, amount: number) {
+    await submitOrder(term, amount);
+    await loadOrders();
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -34,6 +47,8 @@ export default function App() {
           </div>
         )}
         {curve && <YieldCurveChart points={curve.points} date={curve.date} />}
+        <OrderForm onSubmitted={handleOrderSubmitted} />
+        <OrderHistory orders={orders} />
       </main>
     </div>
   );
