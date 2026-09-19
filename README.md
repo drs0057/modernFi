@@ -46,7 +46,7 @@ from the DB with no external call. Orders flow straight from the form ->
 
 | Method | Path                       | Purpose                                                        |
 | ------ | -------------------------- | -------------------------------------------------------------- |
-| GET    | `/api/yield-curve`         | Latest curve, one point per term, with change vs prior day (bp) |
+| GET    | `/api/yield-curve`         | Latest curve, one point per term, with 1D / 1M / 1Y change (bp) |
 | GET    | `/api/orders/quote`        | Order ticket preview: `?term=&amount=`. Writes nothing.         |
 | GET    | `/api/orders`              | Submitted orders, paginated and sortable                        |
 | POST   | `/api/orders`              | Place an order: `{ term, amount }` + `Idempotency-Key` header   |
@@ -75,7 +75,8 @@ nothing behind. Two layers stop duplicates:
 ## Schema
 
 - `yield_curve_rates(date, term, rate, fetched_at)`: one row per term per
-  date. The latest two dates are stored. `fetched_at` drives the 24h cache TTL.
+  date. Only the latest date and its 1 day, 1 month and 1 year comparison
+  dates are stored per refresh. `fetched_at` drives the 24h cache TTL.
 - `orders(id, idempotency_key, term, amount, rate, settlement_date,
   maturity_date, est_interest, submitted_at)`: one row per placed order. `rate`
   is the yield locked in at submit.
@@ -94,9 +95,12 @@ sends a rate.
 Deliberately out of scope:
 
 - No auth. The app has a single implicit user, so order history is global.
-- Only the latest two dates of the yield curve are stored, not full history.
-  On the first business day of a year Treasury's CSV has one row, so the
-  change vs prior day shows as `-`.
+- Yield curve history is not stored. Each refresh keeps the latest date and
+  its 1 day, 1 month and 1 year comparison dates. A refresh fetches this
+  year's and last year's Treasury CSV. Comparison dates are the calendar date
+  minus 1 day / 1 month / 1 year, moved back to the nearest earlier business
+  day. If none exists within 7 days, or last year's fetch fails, that change
+  shows as `-`.
 - Cache staleness is a flat 24h TTL on `fetched_at`, not tied to Treasury's
   publish schedule. There is no manual refresh endpoint.
 - The in-flight map covers one backend process. The unique index covers more.
