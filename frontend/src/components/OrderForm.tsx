@@ -1,5 +1,20 @@
 import { useEffect, useState } from 'react';
-import { Term, TERM_ORDER } from '../types';
+import { ApiError, getQuote } from '../api';
+import { Order, Term, TERM_ORDER, Ticket } from '../types';
+import OrderTicket from './OrderTicket';
+
+const QUOTE_DEBOUNCE_MS = 300;
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function describeSubmitError(err: unknown): string {
+  if (err instanceof ApiError) {
+    return err.status === 502 ? `${capitalize(err.message)}. Try again.` : capitalize(err.message);
+  }
+  return 'Could not reach the server. Try again.';
+}
 
 export default function OrderForm({
   onSubmitted,
@@ -7,8 +22,8 @@ export default function OrderForm({
   initialTerm,
   requestId,
 }: {
-  onSubmitted: (term: string, amount: number) => Promise<void>;
-  onSuccess?: () => void;
+  onSubmitted: (term: string, amount: number) => Promise<Order>;
+  onSuccess?: (order: Order) => void;
   initialTerm?: Term;
   requestId: number;
 }) {
@@ -16,10 +31,38 @@ export default function OrderForm({
   const [amount, setAmount] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
 
   useEffect(() => {
     setTerm(initialTerm ?? TERM_ORDER[5]);
   }, [requestId]);
+
+  useEffect(() => {
+    const parsed = Number(amount);
+    if (amount === '' || !Number.isFinite(parsed) || parsed <= 0) {
+      setTicket(null);
+      setQuoteError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        setTicket(await getQuote(term, parsed, controller.signal));
+        setQuoteError(null);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setTicket(null);
+        setQuoteError(err instanceof ApiError ? capitalize(err.message) : 'Could not load quote.');
+      }
+    }, QUOTE_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [term, amount]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,12 +76,12 @@ export default function OrderForm({
 
     setSubmitting(true);
     try {
-      await onSubmitted(term, parsedAmount);
+      const order = await onSubmitted(term, parsedAmount);
       setAmount('');
-      onSuccess?.();
+      onSuccess?.(order);
     } catch (err) {
       console.error('order submission failed', err);
-      setError('There is a problem submitting the order.');
+      setError(describeSubmitError(err));
     } finally {
       setSubmitting(false);
     }
@@ -50,7 +93,9 @@ export default function OrderForm({
         <label className="block text-sm text-ink-muted mb-1">Term</label>
         <select
           value={term}
-          onChange={(e) => setTerm(e.target.value as Term)}
+          onChange={(e) => {
+            setTerm(e.target.value as Term);
+          }}
           className="w-full border border-ink/20 rounded px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-electric"
         >
           {TERM_ORDER.map((t) => (
@@ -65,12 +110,16 @@ export default function OrderForm({
           min="0"
           step="0.01"
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onChange={(e) => {
+            setAmount(e.target.value);
+          }}
           placeholder="1000000"
           autoFocus
           className="w-full border border-ink/20 rounded px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-electric"
         />
       </div>
+      {ticket && <OrderTicket ticket={ticket} />}
+      {quoteError && <p className="text-sm text-error-text">{quoteError}</p>}
       {error && <p className="text-sm text-error-text">{error}</p>}
       <button
         type="submit"

@@ -1,8 +1,14 @@
+import { formatDate, formatRate, formatUsd } from '../lib/format';
 import { OrderSortColumn, OrdersPage } from '../types';
 
-const COLUMNS: { key: OrderSortColumn; label: string }[] = [
+// `key` is set for columns the backend can sort by.
+const COLUMNS: { key?: OrderSortColumn; label: string }[] = [
   { key: 'term', label: 'Term' },
   { key: 'amount', label: 'Amount' },
+  { label: 'Yield' },
+  { label: 'Settlement' },
+  { key: 'maturity_date', label: 'Maturity' },
+  { label: 'Est. interest' },
   { key: 'submitted_at', label: 'Submitted' },
 ];
 
@@ -55,21 +61,26 @@ export default function OrderHistory({
       {orders.length === 0 ? (
         <p className="text-sm text-ink-muted">No orders submitted yet.</p>
       ) : (
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-ink-muted border-b border-hairline">
               {COLUMNS.map((col) => (
-                <th key={col.key} className="py-2 pr-4">
-                  <button
-                    type="button"
-                    onClick={() => onSortChange(col.key)}
-                    className="flex items-center gap-1 font-medium text-ink-muted hover:text-ink"
-                  >
-                    {col.label}
-                    {sortBy === col.key && (
-                      <span className="text-electric">{sortDir === 'asc' ? '▲' : '▼'}</span>
-                    )}
-                  </button>
+                <th key={col.label} className="py-2 pr-4 whitespace-nowrap font-medium">
+                  {col.key ? (
+                    <button
+                      type="button"
+                      onClick={() => onSortChange(col.key!)}
+                      className="flex items-center gap-1 font-medium text-ink-muted hover:text-ink"
+                    >
+                      {col.label}
+                      {sortBy === col.key && (
+                        <span className="text-electric">{sortDir === 'asc' ? '▲' : '▼'}</span>
+                      )}
+                    </button>
+                  ) : (
+                    col.label
+                  )}
                 </th>
               ))}
             </tr>
@@ -78,9 +89,11 @@ export default function OrderHistory({
             {orders.map((order) => (
               <tr key={order.id} className="border-b border-hairline">
                 <td className="py-2 pr-4 font-medium text-ink">{order.term}</td>
-                <td className="py-2 pr-4 text-ink">
-                  ${Number(order.amount).toLocaleString()}
-                </td>
+                <td className="py-2 pr-4 text-ink">{formatUsd(order.amount)}</td>
+                <td className="py-2 pr-4 text-ink">{formatRate(order.rate)}</td>
+                <td className="py-2 pr-4 text-ink">{formatDate(order.settlement_date)}</td>
+                <td className="py-2 pr-4 text-ink">{formatDate(order.maturity_date)}</td>
+                <td className="py-2 pr-4 text-ink">{formatUsd(order.est_interest)}</td>
                 <td className="py-2 text-ink-muted">
                   {new Date(order.submitted_at).toLocaleString()}
                 </td>
@@ -88,6 +101,7 @@ export default function OrderHistory({
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

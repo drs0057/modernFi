@@ -18,14 +18,30 @@ export interface YieldCurve {
   points: YieldPoint[];
 }
 
+// What the bank sees before submitting, computed by the server.
+export interface Ticket {
+  term: Term;
+  amount: number;
+  rate: number;
+  rateDate: string;
+  settlementDate: string;
+  maturityDate: string;
+  estInterest: number;
+}
+
+// Numeric columns arrive as strings from Postgres NUMERIC.
 export interface Order {
   id: number;
   term: Term;
-  amount: number;
+  amount: string;
+  rate: string;
+  settlement_date: string;
+  maturity_date: string;
+  est_interest: string;
   submitted_at: string;
 }
 
-export type OrderSortColumn = 'term' | 'amount' | 'submitted_at';
+export type OrderSortColumn = 'term' | 'amount' | 'maturity_date' | 'submitted_at';
 export type SortDirection = 'asc' | 'desc';
 
 export interface OrdersPage {

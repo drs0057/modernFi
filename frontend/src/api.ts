@@ -1,4 +1,4 @@
-import { Order, OrderSortColumn, OrdersPage, SortDirection, YieldCurve } from './types';
+import { Order, OrderSortColumn, OrdersPage, SortDirection, Ticket, YieldCurve } from './types';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -25,6 +25,26 @@ export async function getOrders(
   return res.json();
 }
 
+export class ApiError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+  }
+}
+
+export async function getQuote(
+  term: string,
+  amount: number,
+  signal?: AbortSignal
+): Promise<Ticket> {
+  const params = new URLSearchParams({ term, amount: String(amount) });
+  const res = await fetch(`${BASE}/api/orders/quote?${params}`, { signal });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body.error || 'failed to load quote');
+  }
+  return res.json();
+}
+
 export async function submitOrder(term: string, amount: number): Promise<Order> {
   const res = await fetch(`${BASE}/api/orders`, {
     method: 'POST',
@@ -33,7 +53,7 @@ export async function submitOrder(term: string, amount: number): Promise<Order> 
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || 'failed to submit order');
+    throw new ApiError(res.status, body.error || 'failed to submit order');
   }
   return res.json();
 }

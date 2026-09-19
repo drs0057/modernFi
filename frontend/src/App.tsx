@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getOrders, getYieldCurve, submitOrder } from './api';
-import { OrderSortColumn, OrdersPage, Term, YieldCurve } from './types';
+import { Order, OrderSortColumn, OrdersPage, Term, YieldCurve } from './types';
 import YieldCurveChart from './components/YieldCurveChart';
 import OrderPanel from './components/OrderPanel';
 import OrderHistory from './components/OrderHistory';
@@ -23,7 +23,7 @@ export default function App() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [prefillTerm, setPrefillTerm] = useState<Term | undefined>(undefined);
   const [panelRequestId, setPanelRequestId] = useState(0);
-  const [successModalOpen, setSuccessModalOpen] = useState(false);
+  const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
 
   async function loadCurve() {
     try {
@@ -53,9 +53,11 @@ export default function App() {
   }, []);
 
   async function handleOrderSubmitted(term: string, amount: number) {
-    await submitOrder(term, amount);
-    // A new order sorts to the top, so jump back to page 1 to show it.
-    await loadOrders(1);
+    const order = await submitOrder(term, amount);
+    // A new order sorts to the top, so jump back to page 1 to show it. The
+    // order is already placed, so a failed refresh must not read as a failed order.
+    await loadOrders(1).catch((err) => console.error('failed to refresh orders', err));
+    return order;
   }
 
   function openOrderPanel(term?: Term) {
@@ -64,20 +66,20 @@ export default function App() {
     setPanelOpen(true);
   }
 
-  function handleOrderSuccess() {
+  function handleOrderSuccess(order: Order) {
     setPanelOpen(false);
-    setSuccessModalOpen(true);
+    setPlacedOrder(order);
   }
 
   return (
     <div className="min-h-screen bg-canvas">
       <header className="bg-white border-b border-hairline">
-        <div className="max-w-5xl mx-auto px-6 py-2 flex items-center justify-center">
+        <div className="max-w-6xl mx-auto px-6 py-2 flex items-center justify-center">
           <img src="/modernfi-logo.png" alt="ModernFi" className="h-16 w-auto" />
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto p-6 space-y-6">
+      <main className="max-w-6xl mx-auto p-6 space-y-6">
         {loadError && (
           <div className="bg-error-bg border border-error-text/20 text-error-text text-sm rounded p-4">
             {loadError}
@@ -146,7 +148,14 @@ export default function App() {
         }}
       />
 
-      <OrderSuccessModal open={successModalOpen} onClose={() => setSuccessModalOpen(false)} />
+      <OrderSuccessModal
+        order={placedOrder}
+        onClose={() => setPlacedOrder(null)}
+        onViewHistory={() => {
+          setPlacedOrder(null);
+          setActiveTab('history');
+        }}
+      />
     </div>
   );
 }

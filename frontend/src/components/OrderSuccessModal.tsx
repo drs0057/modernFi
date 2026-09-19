@@ -1,15 +1,16 @@
-import { useEffect } from 'react';
+import { Order } from '../types';
+import OrderTicket from './OrderTicket';
 
-const AUTO_DISMISS_MS = 2500;
-
-export default function OrderSuccessModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  useEffect(() => {
-    if (!open) return;
-    const timer = setTimeout(onClose, AUTO_DISMISS_MS);
-    return () => clearTimeout(timer);
-  }, [open, onClose]);
-
-  if (!open) return null;
+export default function OrderSuccessModal({
+  order,
+  onClose,
+  onViewHistory,
+}: {
+  order: Order | null;
+  onClose: () => void;
+  onViewHistory: () => void;
+}) {
+  if (!order) return null;
 
   return (
     <div
@@ -18,15 +19,44 @@ export default function OrderSuccessModal({ open, onClose }: { open: boolean; on
       onClick={onClose}
     >
       <div
-        className="mx-4 flex max-w-xs flex-col items-center gap-3 rounded-2xl bg-white px-8 py-8 shadow-xl"
+        className="mx-4 flex w-full max-w-sm flex-col gap-4 rounded-2xl bg-white px-6 py-8 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
-          <svg className="h-7 w-7 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
+            <svg className="h-7 w-7 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <p className="text-center font-medium text-ink">Order successfully placed</p>
         </div>
-        <p className="text-center font-medium text-ink">Order successfully placed</p>
+        <OrderTicket
+          ticket={{
+            term: order.term,
+            amount: Number(order.amount),
+            rate: Number(order.rate),
+            settlementDate: order.settlement_date,
+            maturityDate: order.maturity_date,
+            estInterest: Number(order.est_interest),
+          }}
+        />
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onViewHistory}
+            className="flex-1 rounded-full border border-ink/20 px-4 py-2 text-sm font-medium text-ink hover:border-electric"
+          >
+            View history
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            autoFocus
+            className="flex-1 rounded-full bg-electric px-4 py-2 text-sm font-medium text-white shadow-cta transition hover:bg-electric-dark hover:shadow-cta-hover"
+          >
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );

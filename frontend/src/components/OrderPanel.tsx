@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Term } from '../types';
+import { Order, Term } from '../types';
 import OrderForm from './OrderForm';
 
 export default function OrderPanel({
@@ -13,8 +13,8 @@ export default function OrderPanel({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmitted: (term: string, amount: number) => Promise<void>;
-  onSubmitSuccess: () => void;
+  onSubmitted: (term: string, amount: number) => Promise<Order>;
+  onSubmitSuccess: (order: Order) => void;
   initialTerm?: Term;
   requestId: number;
   onViewHistory: () => void;
