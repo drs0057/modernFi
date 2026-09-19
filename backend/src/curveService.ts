@@ -1,3 +1,4 @@
+import { pickCompareDates } from './curveDates';
 import { pool } from './db';
 import { refreshYieldCurve } from './treasury';
 import { TERM_ORDER, YieldCurve, YieldPoint } from './types';
@@ -23,35 +24,62 @@ function toRateMap(rows: CurveRow[]): Map<string, number> {
 }
 
 // Rounded to whole basis points. 0.03 percentage points = 3 bp.
-function changeInBp(rate: number, prevRate: number | null): number | null {
-  return prevRate === null ? null : Math.round((rate - prevRate) * 100);
+function changeInBp(rate: number, prevRate: number | undefined): number | null {
+  return prevRate === undefined ? null : Math.round((rate - prevRate) * 100);
 }
 
-async function queryLatest(): Promise<CachedCurve | null> {
-  const { rows } = await pool.query<CurveRow>(
-    `SELECT date::text, term, rate, fetched_at FROM yield_curve_rates
-     WHERE date IN (SELECT DISTINCT date FROM yield_curve_rates ORDER BY date DESC LIMIT 2)`
-  );
+// Old comparison dates pile up in the table as days pass, so the dates in
+// play are picked from the latest date, not by taking the newest few.
+const MAX_STORED_DATES = 400;
 
-  if (rows.length === 0) {
+async function queryLatest(): Promise<CachedCurve | null> {
+  const { rows: dateRows } = await pool.query<{ date: string }>(
+    `SELECT DISTINCT date::text AS date FROM yield_curve_rates ORDER BY date DESC LIMIT ${MAX_STORED_DATES}`
+  );
+  if (dateRows.length === 0) {
     return null;
   }
 
-  const dates = [...new Set(rows.map((row) => row.date))].sort().reverse();
-  const [date, prevDate = null] = dates;
+  const dates = dateRows.map((row) => row.date);
+  const date = dates[0];
+  const compareDates = pickCompareDates(dates, date);
+  const wanted = [date, ...Object.values(compareDates).filter((d): d is string => d !== null)];
+
+  const { rows } = await pool.query<CurveRow>(
+    `SELECT date::text, term, rate, fetched_at FROM yield_curve_rates WHERE date = ANY($1::date[])`,
+    [wanted]
+  );
+
+  const ratesOn = (day: string | null) =>
+    toRateMap(day === null ? [] : rows.filter((row) => row.date === day));
   const latestRows = rows.filter((row) => row.date === date);
-  const latest = toRateMap(latestRows);
-  const previous = toRateMap(rows.filter((row) => row.date === prevDate));
+  if (latestRows.length === 0) {
+    return null;
+  }
+
+  const latest = ratesOn(date);
+  const previous = {
+    d1: ratesOn(compareDates.d1),
+    m1: ratesOn(compareDates.m1),
+    y1: ratesOn(compareDates.y1),
+  };
 
   const points: YieldPoint[] = TERM_ORDER
     .filter((term) => latest.has(term))
     .map((term) => {
       const rate = latest.get(term)!;
-      const prevRate = previous.get(term) ?? null;
-      return { term, rate, prevRate, changeBp: changeInBp(rate, prevRate) };
+      return {
+        term,
+        rate,
+        changes: {
+          d1: changeInBp(rate, previous.d1.get(term)),
+          m1: changeInBp(rate, previous.m1.get(term)),
+          y1: changeInBp(rate, previous.y1.get(term)),
+        },
+      };
     });
 
-  return { curve: { date, prevDate, points }, fetchedAt: latestRows[0].fetched_at };
+  return { curve: { date, compareDates, points }, fetchedAt: latestRows[0].fetched_at };
 }
 
 function isStale(fetchedAt: string): boolean {

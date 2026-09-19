@@ -24,10 +24,10 @@ const KEY = '3f2b1c9e-7a44-4d0e-9c1a-5b6d8e2f1a70';
 
 const CURVE = {
   date: '2026-09-18',
-  prevDate: '2026-09-17',
+  compareDates: { d1: '2026-09-17', m1: '2026-08-18', y1: '2025-09-18' },
   points: [
-    { term: '2yr' as const, rate: 4, prevRate: 3.98, changeBp: 2 },
-    { term: '5yr' as const, rate: 4.78, prevRate: 4.8, changeBp: -2 },
+    { term: '2yr' as const, rate: 4, changes: { d1: 2, m1: -10, y1: 35 } },
+    { term: '5yr' as const, rate: 4.78, changes: { d1: -2, m1: 5, y1: 20 } },
   ],
 };
 

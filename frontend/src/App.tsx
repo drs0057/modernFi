@@ -123,7 +123,6 @@ export default function App() {
               <YieldCurveChart
                 points={curve.points}
                 date={curve.date}
-                prevDate={curve.prevDate}
                 onPointClick={openOrderPanel}
               />
             )}

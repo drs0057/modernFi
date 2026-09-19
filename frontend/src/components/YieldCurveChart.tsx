@@ -7,30 +7,31 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
-import { Term, YieldPoint } from '../types';
+import { Term, YieldChanges, YieldPoint } from '../types';
 
-function ChangeLine({ changeBp }: { changeBp: number | null }) {
-  if (changeBp === null || changeBp === 0) {
-    return <span className="text-ink-muted">{changeBp === 0 ? '0 bp' : '-'}</span>;
+const PERIODS: { key: keyof YieldChanges; label: string }[] = [
+  { key: 'd1', label: '1D' },
+  { key: 'm1', label: '1M' },
+  { key: 'y1', label: '1Y' },
+];
+
+function ChangeValue({ bp }: { bp: number | null }) {
+  if (bp === null) {
+    return <span className="text-ink-muted">-</span>;
+  }
+  if (bp === 0) {
+    return <span className="text-ink-muted">0 bp</span>;
   }
   // Green when the yield rose, red when it fell.
-  const up = changeBp > 0;
+  const up = bp > 0;
   return (
     <span className={up ? 'text-success' : 'text-error-text'}>
-      {up ? '▲' : '▼'} {up ? '+' : ''}{changeBp} bp
+      {up ? '▲' : '▼'} {up ? '+' : ''}{bp} bp
     </span>
   );
 }
 
-function CurveTooltip({
-  active,
-  payload,
-  prevDate,
-}: {
-  active?: boolean;
-  payload?: { payload: YieldPoint }[];
-  prevDate: string | null;
-}) {
+function CurveTooltip({ active, payload }: { active?: boolean; payload?: { payload: YieldPoint }[] }) {
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
 
@@ -38,10 +39,16 @@ function CurveTooltip({
     <div className="rounded-lg border border-hairline bg-white px-3 py-2 text-sm shadow">
       <p className="font-medium text-ink">{point.term}</p>
       <p className="text-ink">Yield {point.rate.toFixed(2)}%</p>
-      <p className="font-medium">
-        <ChangeLine changeBp={point.changeBp} />
-      </p>
-      {prevDate && <p className="text-xs text-ink-muted">vs {prevDate}</p>}
+      <dl className="mt-2 min-w-[9rem] border-t border-hairline pt-2">
+        {PERIODS.map(({ key, label }) => (
+          <div key={key} className="flex items-center justify-between gap-6 py-0.5">
+            <dt className="text-xs text-ink-muted">{label}</dt>
+            <dd className="font-medium tabular-nums">
+              <ChangeValue bp={point.changes[key]} />
+            </dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }
@@ -49,12 +56,10 @@ function CurveTooltip({
 export default function YieldCurveChart({
   points,
   date,
-  prevDate,
   onPointClick,
 }: {
   points: YieldPoint[];
   date: string;
-  prevDate: string | null;
   onPointClick?: (term: Term) => void;
 }) {
   function handleClick(state: any) {
@@ -81,7 +86,7 @@ export default function YieldCurveChart({
             <XAxis dataKey="term" stroke="#4D4D4D" fontSize={12} />
             <YAxis unit="%" stroke="#4D4D4D" fontSize={12} />
             <Tooltip
-              content={<CurveTooltip prevDate={prevDate} />}
+              content={<CurveTooltip />}
               cursor={onPointClick ? { stroke: '#00A19C', strokeOpacity: 0.12, strokeWidth: 44 } : true}
             />
             <Line

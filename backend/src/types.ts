@@ -21,16 +21,23 @@ export const TERM_MONTHS: Record<Term, number> = {
   '30yr': 360,
 };
 
+// Change in basis points vs 1 day, 1 month and 1 year earlier. Null when
+// there is no comparison date close enough.
+export interface YieldChanges {
+  d1: number | null;
+  m1: number | null;
+  y1: number | null;
+}
+
 export interface YieldPoint {
   term: Term;
   rate: number;
-  prevRate: number | null;
-  changeBp: number | null;
+  changes: YieldChanges;
 }
 
 export interface YieldCurve {
   date: string;
-  prevDate: string | null;
+  compareDates: { d1: string | null; m1: string | null; y1: string | null };
   points: YieldPoint[];
 }
 
