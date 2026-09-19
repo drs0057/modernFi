@@ -12,25 +12,15 @@ describe('submitToPaymentProcessor', () => {
     jest.restoreAllMocks();
   });
 
-  it('resolves when the simulated processor accepts the order', async () => {
-    jest.spyOn(Math, 'random').mockReturnValue(0.99);
+  it('accepts the order at the shortest and longest simulated latency', async () => {
+    for (const random of [0, 0.99]) {
+      jest.spyOn(Math, 'random').mockReturnValue(random);
 
-    const promise = submitToPaymentProcessor(KEY);
-    await jest.advanceTimersByTimeAsync(1000);
+      const promise = submitToPaymentProcessor(KEY);
+      await jest.advanceTimersByTimeAsync(1000);
 
-    await expect(promise).resolves.toBeUndefined();
-  });
-
-  it('rejects when the simulated processor declines the order', async () => {
-    jest.spyOn(Math, 'random').mockReturnValue(0);
-
-    const promise = submitToPaymentProcessor(KEY);
-    // Attach the rejection handler before advancing timers, so the promise
-    // is never briefly unhandled once it settles.
-    const assertion = expect(promise).rejects.toThrow('payment processor declined the order');
-    await jest.advanceTimersByTimeAsync(1000);
-
-    await assertion;
+      await expect(promise).resolves.toBeUndefined();
+    }
   });
 
   it('waits out a randomized delay before settling', async () => {

@@ -85,8 +85,9 @@ frontend/src/       App, components (ui/ holds Button and TabButton), api.ts,
   order. The original order is returned and the payment processor is not called.
 - `400` bad input, malformed JSON, or a missing/non-UUID `Idempotency-Key`.
 - `422` the key was already used with a different term or amount.
-- `502` the payment processor declined (simulated, 15%) or Treasury data was
-  unavailable. Nothing is written. The same key can be retried.
+- `502` the payment processor declined or Treasury data was unavailable.
+  Nothing is written. The same key can be retried. The mock processor never
+  declines, so a decline only happens with a real one.
 - `500` unexpected server error, such as the database being down.
 
 ## Order safety
