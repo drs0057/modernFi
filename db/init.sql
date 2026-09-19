@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS yield_curve_rates (
 
 CREATE TABLE IF NOT EXISTS orders (
   id              SERIAL PRIMARY KEY,
+  idempotency_key UUID NOT NULL UNIQUE,
   term            TEXT NOT NULL,
   amount          NUMERIC(14,2) NOT NULL,
   rate            NUMERIC(5,3) NOT NULL,

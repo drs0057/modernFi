@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError, getQuote } from '../api';
+import { newIdempotencyKey } from '../lib/format';
 import { Order, Term, TERM_ORDER, Ticket } from '../types';
 import OrderTicket from './OrderTicket';
 
@@ -22,7 +23,7 @@ export default function OrderForm({
   initialTerm,
   requestId,
 }: {
-  onSubmitted: (term: string, amount: number) => Promise<Order>;
+  onSubmitted: (term: string, amount: number, idempotencyKey: string) => Promise<Order>;
   onSuccess?: (order: Order) => void;
   initialTerm?: Term;
   requestId: number;
@@ -34,8 +35,21 @@ export default function OrderForm({
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
 
+  // One key per order intent. It stays the same across retries, so if a
+  // request times out but the server placed the order, the retry returns
+  // that order instead of creating a second one. It changes when the user
+  // edits the order, and after a successful submit.
+  const idempotencyKey = useRef(newIdempotencyKey());
+  // A ref, not state: two fast clicks can both run before a state update renders.
+  const inFlight = useRef(false);
+
+  function startNewIntent() {
+    idempotencyKey.current = newIdempotencyKey();
+  }
+
   useEffect(() => {
     setTerm(initialTerm ?? TERM_ORDER[5]);
+    startNewIntent();
   }, [requestId]);
 
   useEffect(() => {
@@ -66,6 +80,7 @@ export default function OrderForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (inFlight.current) return;
     setError(null);
 
     const parsedAmount = Number(amount);
@@ -74,15 +89,18 @@ export default function OrderForm({
       return;
     }
 
+    inFlight.current = true;
     setSubmitting(true);
     try {
-      const order = await onSubmitted(term, parsedAmount);
+      const order = await onSubmitted(term, parsedAmount, idempotencyKey.current);
+      startNewIntent();
       setAmount('');
       onSuccess?.(order);
     } catch (err) {
       console.error('order submission failed', err);
       setError(describeSubmitError(err));
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
   }
@@ -95,6 +113,7 @@ export default function OrderForm({
           value={term}
           onChange={(e) => {
             setTerm(e.target.value as Term);
+            startNewIntent();
           }}
           className="w-full border border-ink/20 rounded px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-electric"
         >
@@ -112,6 +131,7 @@ export default function OrderForm({
           value={amount}
           onChange={(e) => {
             setAmount(e.target.value);
+            startNewIntent();
           }}
           placeholder="1000000"
           autoFocus

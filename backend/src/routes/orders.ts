@@ -8,10 +8,11 @@ import { Order, TERM_ORDER, Term, Ticket } from '../types';
 const router = Router();
 
 const MAX_AMOUNT = 1_000_000_000;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // settlement_date and maturity_date are cast to text so pg does not turn a
 // DATE into a JS Date and shift it by the server's timezone.
-const ORDER_COLUMNS = `id, term, amount, rate,
+const ORDER_COLUMNS = `id, idempotency_key, term, amount, rate,
   settlement_date::text AS settlement_date, maturity_date::text AS maturity_date,
   est_interest, submitted_at`;
 
@@ -82,7 +83,94 @@ router.get('/quote', async (req, res) => {
   }
 });
 
+interface PlacedOrder {
+  order: Order;
+  replayed: boolean;
+}
+
+// Requests currently talking to the payment processor, by idempotency key. A
+// duplicate that arrives mid-flight waits for the first request's result
+// instead of charging again. This only covers one process. The unique index
+// on orders.idempotency_key covers several.
+const inFlight = new Map<string, { input: OrderInput; result: Promise<PlacedOrder> }>();
+
+function assertSameInput(order: Order, input: OrderInput): void {
+  if (order.term !== input.term || Number(order.amount) !== input.amount) {
+    throw new HttpError(422, 'Idempotency-Key was already used with a different order');
+  }
+}
+
+async function findOrderByKey(key: string): Promise<Order | null> {
+  const { rows } = await pool.query<Order>(
+    `SELECT ${ORDER_COLUMNS} FROM orders WHERE idempotency_key = $1`,
+    [key]
+  );
+  return rows[0] ?? null;
+}
+
+async function processOrder(key: string, input: OrderInput): Promise<PlacedOrder> {
+  const existing = await findOrderByKey(key);
+  if (existing) {
+    assertSameInput(existing, input);
+    return { order: existing, replayed: true };
+  }
+
+  const ticket = await buildTicketAtCurrentRate(input);
+
+  try {
+    await submitToPaymentProcessor(key);
+  } catch (err) {
+    console.error('payment processor declined order', err);
+    throw new HttpError(502, 'payment processor declined the order');
+  }
+
+  // The row is written only after the processor accepts, so a decline leaves
+  // nothing behind and the same key can be retried.
+  const { rows } = await pool.query<Order>(
+    `INSERT INTO orders (idempotency_key, term, amount, rate, settlement_date, maturity_date, est_interest)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (idempotency_key) DO NOTHING
+     RETURNING ${ORDER_COLUMNS}`,
+    [key, ticket.term, ticket.amount, ticket.rate, ticket.settlementDate, ticket.maturityDate, ticket.estInterest]
+  );
+  if (rows[0]) {
+    return { order: rows[0], replayed: false };
+  }
+
+  // Another process inserted this key first. Return its order.
+  const winner = await findOrderByKey(key);
+  if (!winner) {
+    throw new Error('order vanished after idempotency conflict');
+  }
+  assertSameInput(winner, input);
+  return { order: winner, replayed: true };
+}
+
+async function placeOrder(key: string, input: OrderInput): Promise<PlacedOrder> {
+  const pending = inFlight.get(key);
+  if (pending) {
+    if (pending.input.term !== input.term || pending.input.amount !== input.amount) {
+      throw new HttpError(422, 'Idempotency-Key was already used with a different order');
+    }
+    const { order } = await pending.result;
+    return { order, replayed: true };
+  }
+
+  const result = processOrder(key, input);
+  inFlight.set(key, { input, result });
+  try {
+    return await result;
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
 router.post('/', async (req, res) => {
+  const key = req.header('Idempotency-Key');
+  if (!key || !UUID_PATTERN.test(key)) {
+    return res.status(400).json({ error: 'Idempotency-Key header must be a UUID' });
+  }
+
   const { term, amount } = req.body ?? {};
   const invalid = validateOrderInput(term, amount);
   if (invalid) {
@@ -90,22 +178,11 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const ticket = await buildTicketAtCurrentRate({ term, amount });
-
-    try {
-      await submitToPaymentProcessor();
-    } catch (err) {
-      console.error('payment processor declined order', err);
-      return res.status(502).json({ error: 'payment processor declined the order' });
+    const { order, replayed } = await placeOrder(key, { term, amount });
+    if (replayed) {
+      res.set('Idempotent-Replayed', 'true');
     }
-
-    const { rows } = await pool.query<Order>(
-      `INSERT INTO orders (term, amount, rate, settlement_date, maturity_date, est_interest)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING ${ORDER_COLUMNS}`,
-      [ticket.term, ticket.amount, ticket.rate, ticket.settlementDate, ticket.maturityDate, ticket.estInterest]
-    );
-    res.status(201).json(rows[0]);
+    res.status(replayed ? 200 : 201).json(order);
   } catch (err) {
     if (err instanceof HttpError) {
       return res.status(err.status).json({ error: err.message });

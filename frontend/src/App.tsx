@@ -52,8 +52,8 @@ export default function App() {
     loadOrders();
   }, []);
 
-  async function handleOrderSubmitted(term: string, amount: number) {
-    const order = await submitOrder(term, amount);
+  async function handleOrderSubmitted(term: string, amount: number, idempotencyKey: string) {
+    const order = await submitOrder(term, amount, idempotencyKey);
     // A new order sorts to the top, so jump back to page 1 to show it. The
     // order is already placed, so a failed refresh must not read as a failed order.
     await loadOrders(1).catch((err) => console.error('failed to refresh orders', err));

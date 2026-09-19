@@ -20,6 +20,8 @@ const mockedQuery = jest.mocked(pool.query);
 const mockedSubmit = jest.mocked(submitToPaymentProcessor);
 const mockedCurve = jest.mocked(getCurrentCurve);
 
+const KEY = '3f2b1c9e-7a44-4d0e-9c1a-5b6d8e2f1a70';
+
 const CURVE = {
   date: '2026-09-18',
   prevDate: '2026-09-17',
@@ -29,9 +31,10 @@ const CURVE = {
   ],
 };
 
-function storedOrder() {
+function storedOrder(overrides: Record<string, unknown> = {}) {
   return {
     id: 1,
+    idempotency_key: KEY,
     term: '5yr',
     amount: '100.00',
     rate: '4.780',
@@ -39,6 +42,7 @@ function storedOrder() {
     maturity_date: '2031-09-21',
     est_interest: '23.90',
     submitted_at: '2026-09-19T00:00:00.000Z',
+    ...overrides,
   };
 }
 
@@ -48,6 +52,14 @@ function buildApp() {
   app.use('/api/orders', ordersRouter);
   return app;
 }
+
+function post(body: unknown, key: string | null = KEY) {
+  const req = request(buildApp()).post('/api/orders');
+  if (key) req.set('Idempotency-Key', key);
+  return req.send(body as object);
+}
+
+const insertCalls = () => mockedQuery.mock.calls.filter(([sql]) => /INSERT INTO orders/.test(String(sql)));
 
 describe('POST /api/orders', () => {
   beforeEach(() => {
@@ -61,8 +73,23 @@ describe('POST /api/orders', () => {
     jest.restoreAllMocks();
   });
 
+  it('rejects a missing Idempotency-Key', async () => {
+    const res = await post({ term: '5yr', amount: 100 }, null);
+
+    expect(res.status).toBe(400);
+    expect(mockedSubmit).not.toHaveBeenCalled();
+    expect(mockedQuery).not.toHaveBeenCalled();
+  });
+
+  it('rejects an Idempotency-Key that is not a UUID', async () => {
+    const res = await post({ term: '5yr', amount: 100 }, 'not-a-uuid');
+
+    expect(res.status).toBe(400);
+    expect(mockedSubmit).not.toHaveBeenCalled();
+  });
+
   it('rejects a term outside the known set', async () => {
-    const res = await request(buildApp()).post('/api/orders').send({ term: '99yr', amount: 100 });
+    const res = await post({ term: '99yr', amount: 100 });
 
     expect(res.status).toBe(400);
     expect(mockedSubmit).not.toHaveBeenCalled();
@@ -70,32 +97,28 @@ describe('POST /api/orders', () => {
   });
 
   it('rejects a non-positive amount', async () => {
-    const res = await request(buildApp()).post('/api/orders').send({ term: '5yr', amount: 0 });
+    const res = await post({ term: '5yr', amount: 0 });
 
     expect(res.status).toBe(400);
     expect(mockedSubmit).not.toHaveBeenCalled();
   });
 
   it('rejects an amount that is not a finite number', async () => {
-    const res = await request(buildApp())
-      .post('/api/orders')
-      .send({ term: '5yr', amount: 'lots' });
+    const res = await post({ term: '5yr', amount: 'lots' });
 
     expect(res.status).toBe(400);
     expect(mockedSubmit).not.toHaveBeenCalled();
   });
 
   it('rejects an amount with more than 2 decimal places', async () => {
-    const res = await request(buildApp()).post('/api/orders').send({ term: '5yr', amount: 100.123 });
+    const res = await post({ term: '5yr', amount: 100.123 });
 
     expect(res.status).toBe(400);
     expect(mockedSubmit).not.toHaveBeenCalled();
   });
 
   it('rejects an amount above the maximum', async () => {
-    const res = await request(buildApp())
-      .post('/api/orders')
-      .send({ term: '5yr', amount: 1_000_000_001 });
+    const res = await post({ term: '5yr', amount: 1_000_000_001 });
 
     expect(res.status).toBe(400);
     expect(mockedSubmit).not.toHaveBeenCalled();
@@ -103,41 +126,149 @@ describe('POST /api/orders', () => {
 
   it('inserts the order with the current rate only after the processor accepts it', async () => {
     mockedSubmit.mockResolvedValue(undefined);
-    mockedQuery.mockResolvedValue({ rows: [storedOrder()] } as never);
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [] } as never) // lookup by key
+      .mockResolvedValueOnce({ rows: [storedOrder()] } as never); // insert
 
-    const res = await request(buildApp()).post('/api/orders').send({ term: '5yr', amount: 100 });
+    const res = await post({ term: '5yr', amount: 100 });
 
     expect(res.status).toBe(201);
+    expect(res.headers['idempotent-replayed']).toBeUndefined();
     expect(res.body).toEqual(storedOrder());
     expect(mockedSubmit).toHaveBeenCalledTimes(1);
-    expect(mockedQuery).toHaveBeenCalledTimes(1);
-    expect(mockedQuery.mock.calls[0][0]).toMatch(/INSERT INTO orders/);
-    expect(mockedQuery.mock.calls[0][1]).toEqual([
-      '5yr',
-      100,
-      4.78,
-      expect.any(String),
-      expect.any(String),
-      23.9,
-    ]);
+    expect(mockedSubmit).toHaveBeenCalledWith(KEY);
+    expect(insertCalls()).toHaveLength(1);
+
+    const [, params] = insertCalls()[0];
+    expect(params).toEqual([KEY, '5yr', 100, 4.78, expect.any(String), expect.any(String), 23.9]);
   });
 
   it('never writes to the database when the payment processor declines', async () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     mockedSubmit.mockRejectedValue(new Error('payment processor declined the order'));
+    mockedQuery.mockResolvedValueOnce({ rows: [] } as never);
 
-    const res = await request(buildApp()).post('/api/orders').send({ term: '5yr', amount: 100 });
+    const res = await post({ term: '5yr', amount: 100 });
 
     expect(res.status).toBe(502);
     expect(res.body).toEqual({ error: 'payment processor declined the order' });
-    expect(mockedQuery).not.toHaveBeenCalled();
+    expect(insertCalls()).toHaveLength(0);
+  });
+
+  it('lets the same key succeed on retry after a decline', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockedSubmit
+      .mockRejectedValueOnce(new Error('payment processor declined the order'))
+      .mockResolvedValueOnce(undefined);
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [] } as never) // first attempt: lookup
+      .mockResolvedValueOnce({ rows: [] } as never) // retry: lookup
+      .mockResolvedValueOnce({ rows: [storedOrder()] } as never); // retry: insert
+
+    const first = await post({ term: '5yr', amount: 100 });
+    const retry = await post({ term: '5yr', amount: 100 });
+
+    expect(first.status).toBe(502);
+    expect(retry.status).toBe(201);
+    expect(insertCalls()).toHaveLength(1);
+  });
+
+  it('replays a stored order without calling the processor again', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [storedOrder()] } as never);
+
+    const res = await post({ term: '5yr', amount: 100 });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['idempotent-replayed']).toBe('true');
+    expect(res.body).toEqual(storedOrder());
+    expect(mockedSubmit).not.toHaveBeenCalled();
+    expect(insertCalls()).toHaveLength(0);
+  });
+
+  it('returns 422 when a stored key is reused with a different order', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [storedOrder()] } as never);
+
+    const res = await post({ term: '2yr', amount: 100 });
+
+    expect(res.status).toBe(422);
+    expect(mockedSubmit).not.toHaveBeenCalled();
+  });
+
+  it('runs the processor once for two concurrent requests with the same key', async () => {
+    let releaseProcessor: () => void = () => {};
+    mockedSubmit.mockImplementation(
+      () => new Promise<void>((resolve) => (releaseProcessor = resolve))
+    );
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [] } as never) // lookup
+      .mockResolvedValueOnce({ rows: [storedOrder()] } as never); // insert
+
+    const app = buildApp();
+    const send = () =>
+      request(app).post('/api/orders').set('Idempotency-Key', KEY).send({ term: '5yr', amount: 100 });
+    const first = send().then((res) => res);
+    // Let the first request reach the processor before the duplicate arrives.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const second = send().then((res) => res);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    releaseProcessor();
+
+    const [a, b] = await Promise.all([first, second]);
+
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+    expect(insertCalls()).toHaveLength(1);
+    expect([a.status, b.status].sort()).toEqual([200, 201]);
+    expect(a.body).toEqual(b.body);
+  });
+
+  it('returns 422 to a concurrent request that reuses the key with a different order', async () => {
+    let releaseProcessor: () => void = () => {};
+    mockedSubmit.mockImplementation(
+      () => new Promise<void>((resolve) => (releaseProcessor = resolve))
+    );
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [] } as never)
+      .mockResolvedValueOnce({ rows: [storedOrder()] } as never);
+
+    const app = buildApp();
+    const first = request(app)
+      .post('/api/orders')
+      .set('Idempotency-Key', KEY)
+      .send({ term: '5yr', amount: 100 })
+      .then((res) => res);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const second = await request(app)
+      .post('/api/orders')
+      .set('Idempotency-Key', KEY)
+      .send({ term: '2yr', amount: 100 });
+    releaseProcessor();
+    const firstRes = await first;
+
+    expect(second.status).toBe(422);
+    expect(firstRes.status).toBe(201);
+    expect(mockedSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('replays the winner when another process inserts the same key first', async () => {
+    mockedSubmit.mockResolvedValue(undefined);
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [] } as never) // lookup: nothing yet
+      .mockResolvedValueOnce({ rows: [] } as never) // insert: ON CONFLICT DO NOTHING
+      .mockResolvedValueOnce({ rows: [storedOrder({ id: 7 })] } as never); // lookup winner
+
+    const res = await post({ term: '5yr', amount: 100 });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['idempotent-replayed']).toBe('true');
+    expect(res.body.id).toBe(7);
   });
 
   it('returns 502 without calling the processor when the rate is unavailable', async () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     mockedCurve.mockRejectedValue(new Error('failed to fetch treasury data'));
+    mockedQuery.mockResolvedValueOnce({ rows: [] } as never);
 
-    const res = await request(buildApp()).post('/api/orders').send({ term: '5yr', amount: 100 });
+    const res = await post({ term: '5yr', amount: 100 });
 
     expect(res.status).toBe(502);
     expect(mockedSubmit).not.toHaveBeenCalled();

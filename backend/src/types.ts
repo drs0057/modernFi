@@ -34,13 +34,6 @@ export interface YieldCurve {
   points: YieldPoint[];
 }
 
-export interface Order {
-  id: number;
-  term: Term;
-  amount: number;
-  submitted_at: string;
-}
-
 export interface Ticket {
   term: Term;
   amount: number;
@@ -49,4 +42,16 @@ export interface Ticket {
   settlementDate: string;
   maturityDate: string;
   estInterest: number;
+}
+
+export interface Order {
+  id: number;
+  idempotency_key: string;
+  term: Term;
+  amount: string;
+  rate: string;
+  settlement_date: string;
+  maturity_date: string;
+  est_interest: string;
+  submitted_at: string;
 }

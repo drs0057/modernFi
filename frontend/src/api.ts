@@ -45,10 +45,12 @@ export async function getQuote(
   return res.json();
 }
 
-export async function submitOrder(term: string, amount: number): Promise<Order> {
+// The same idempotency key can be sent again after a failure. The server
+// returns the original order if it already went through.
+export async function submitOrder(term: string, amount: number, idempotencyKey: string): Promise<Order> {
   const res = await fetch(`${BASE}/api/orders`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({ term, amount }),
   });
   if (!res.ok) {

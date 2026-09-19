@@ -18,3 +18,15 @@ export function formatDate(iso: string): string {
     year: 'numeric',
   });
 }
+
+// crypto.randomUUID needs a secure context (https or localhost). Fall back
+// so the app still works when opened over plain http on a LAN address.
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.floor(Math.random() * 16);
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}

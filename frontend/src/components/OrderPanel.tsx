@@ -13,7 +13,7 @@ export default function OrderPanel({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmitted: (term: string, amount: number) => Promise<Order>;
+  onSubmitted: (term: string, amount: number, idempotencyKey: string) => Promise<Order>;
   onSubmitSuccess: (order: Order) => void;
   initialTerm?: Term;
   requestId: number;

@@ -32,6 +32,7 @@ export interface Ticket {
 // Numeric columns arrive as strings from Postgres NUMERIC.
 export interface Order {
   id: number;
+  idempotency_key: string;
   term: Term;
   amount: string;
   rate: string;
