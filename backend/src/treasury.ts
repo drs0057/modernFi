@@ -70,8 +70,8 @@ export async function refreshYieldCurve(): Promise<{ date: string; inserted: num
 
   for (const point of points) {
     await pool.query(
-      `INSERT INTO yield_curve_rates (date, term, rate) VALUES ($1, $2, $3)
-       ON CONFLICT (date, term) DO UPDATE SET rate = EXCLUDED.rate`,
+      `INSERT INTO yield_curve_rates (date, term, rate, fetched_at) VALUES ($1, $2, $3, now())
+       ON CONFLICT (date, term) DO UPDATE SET rate = EXCLUDED.rate, fetched_at = now()`,
       [date, point.term, point.rate]
     );
   }

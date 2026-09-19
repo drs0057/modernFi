@@ -1,8 +1,9 @@
 CREATE TABLE IF NOT EXISTS yield_curve_rates (
-  id     SERIAL PRIMARY KEY,
-  date   DATE NOT NULL,
-  term   TEXT NOT NULL,
-  rate   NUMERIC(5,3) NOT NULL,
+  id         SERIAL PRIMARY KEY,
+  date       DATE NOT NULL,
+  term       TEXT NOT NULL,
+  rate       NUMERIC(5,3) NOT NULL,
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (date, term)
 );
 

@@ -5,9 +5,19 @@ import { TERM_ORDER, YieldPoint } from '../types';
 
 const router = Router();
 
-async function queryLatest(): Promise<{ date: string; points: YieldPoint[] } | null> {
-  const { rows } = await pool.query<{ date: string; term: string; rate: string }>(
-    `SELECT date::text, term, rate FROM yield_curve_rates
+// Treasury publishes the par yield curve once per business day and it
+// doesn't change intraday, so a day-long TTL is enough to stay current.
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface CachedCurve {
+  date: string;
+  points: YieldPoint[];
+  fetchedAt: string;
+}
+
+async function queryLatest(): Promise<CachedCurve | null> {
+  const { rows } = await pool.query<{ date: string; term: string; rate: string; fetched_at: string }>(
+    `SELECT date::text, term, rate, fetched_at FROM yield_curve_rates
      WHERE date = (SELECT MAX(date) FROM yield_curve_rates)`
   );
 
@@ -20,37 +30,36 @@ async function queryLatest(): Promise<{ date: string; points: YieldPoint[] } | n
     .filter((term) => rateByTerm.has(term))
     .map((term) => ({ term, rate: rateByTerm.get(term)! }));
 
-  return { date: rows[0].date, points };
+  return { date: rows[0].date, points, fetchedAt: rows[0].fetched_at };
 }
 
-router.post('/refresh', async (_req, res) => {
+function isStale(fetchedAt: string): boolean {
+  return Date.now() - new Date(fetchedAt).getTime() > CACHE_TTL_MS;
+}
+
+router.get('/', async (_req, res) => {
+  const cached = await queryLatest();
+
+  if (cached && !isStale(cached.fetchedAt)) {
+    return res.json({ date: cached.date, points: cached.points });
+  }
+
   try {
-    const result = await refreshYieldCurve();
-    res.json(result);
+    await refreshYieldCurve();
   } catch (err) {
-    console.error('refresh failed', err);
-    res.status(502).json({ error: 'failed to fetch treasury data' });
-  }
-});
-
-router.get('/latest', async (_req, res) => {
-  let latest = await queryLatest();
-
-  if (!latest) {
-    try {
-      await refreshYieldCurve();
-    } catch (err) {
-      console.error('cache-miss refresh failed', err);
-      return res.status(502).json({ error: 'failed to fetch treasury data' });
+    if (cached) {
+      console.error('refresh failed, serving stale cache', err);
+      return res.json({ date: cached.date, points: cached.points });
     }
-    latest = await queryLatest();
+    console.error('refresh failed, no cached data available', err);
+    return res.status(502).json({ error: 'failed to fetch treasury data' });
   }
 
-  if (!latest) {
-    return res.status(404).json({ error: 'no yield curve data available' });
+  const refreshed = await queryLatest();
+  if (!refreshed) {
+    return res.status(502).json({ error: 'failed to fetch treasury data' });
   }
-
-  res.json(latest);
+  res.json({ date: refreshed.date, points: refreshed.points });
 });
 
 export default router;
