@@ -7,13 +7,40 @@ jest.mock('../db', () => ({
 jest.mock('../paymentProcessor', () => ({
   submitToPaymentProcessor: jest.fn(),
 }));
+jest.mock('../curveService', () => ({
+  getCurrentCurve: jest.fn(),
+}));
 
 import { pool } from '../db';
+import { getCurrentCurve } from '../curveService';
 import { submitToPaymentProcessor } from '../paymentProcessor';
 import ordersRouter from './orders';
 
 const mockedQuery = jest.mocked(pool.query);
 const mockedSubmit = jest.mocked(submitToPaymentProcessor);
+const mockedCurve = jest.mocked(getCurrentCurve);
+
+const CURVE = {
+  date: '2026-09-18',
+  prevDate: '2026-09-17',
+  points: [
+    { term: '2yr' as const, rate: 4, prevRate: 3.98, changeBp: 2 },
+    { term: '5yr' as const, rate: 4.78, prevRate: 4.8, changeBp: -2 },
+  ],
+};
+
+function storedOrder() {
+  return {
+    id: 1,
+    term: '5yr',
+    amount: '100.00',
+    rate: '4.780',
+    settlement_date: '2026-09-21',
+    maturity_date: '2031-09-21',
+    est_interest: '23.90',
+    submitted_at: '2026-09-19T00:00:00.000Z',
+  };
+}
 
 function buildApp() {
   const app = express();
@@ -26,6 +53,12 @@ describe('POST /api/orders', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
     mockedSubmit.mockReset();
+    mockedCurve.mockReset();
+    mockedCurve.mockResolvedValue(CURVE);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('rejects a term outside the known set', async () => {
@@ -52,24 +85,41 @@ describe('POST /api/orders', () => {
     expect(mockedSubmit).not.toHaveBeenCalled();
   });
 
-  it('inserts the order only after the payment processor accepts it', async () => {
+  it('rejects an amount with more than 2 decimal places', async () => {
+    const res = await request(buildApp()).post('/api/orders').send({ term: '5yr', amount: 100.123 });
+
+    expect(res.status).toBe(400);
+    expect(mockedSubmit).not.toHaveBeenCalled();
+  });
+
+  it('rejects an amount above the maximum', async () => {
+    const res = await request(buildApp())
+      .post('/api/orders')
+      .send({ term: '5yr', amount: 1_000_000_001 });
+
+    expect(res.status).toBe(400);
+    expect(mockedSubmit).not.toHaveBeenCalled();
+  });
+
+  it('inserts the order with the current rate only after the processor accepts it', async () => {
     mockedSubmit.mockResolvedValue(undefined);
-    mockedQuery.mockResolvedValue({
-      rows: [{ id: 1, term: '5yr', amount: '100.00', submitted_at: '2026-09-19T00:00:00.000Z' }],
-    } as never);
+    mockedQuery.mockResolvedValue({ rows: [storedOrder()] } as never);
 
     const res = await request(buildApp()).post('/api/orders').send({ term: '5yr', amount: 100 });
 
     expect(res.status).toBe(201);
-    expect(res.body).toEqual({
-      id: 1,
-      term: '5yr',
-      amount: '100.00',
-      submitted_at: '2026-09-19T00:00:00.000Z',
-    });
+    expect(res.body).toEqual(storedOrder());
     expect(mockedSubmit).toHaveBeenCalledTimes(1);
     expect(mockedQuery).toHaveBeenCalledTimes(1);
     expect(mockedQuery.mock.calls[0][0]).toMatch(/INSERT INTO orders/);
+    expect(mockedQuery.mock.calls[0][1]).toEqual([
+      '5yr',
+      100,
+      4.78,
+      expect.any(String),
+      expect.any(String),
+      23.9,
+    ]);
   });
 
   it('never writes to the database when the payment processor declines', async () => {
@@ -81,6 +131,50 @@ describe('POST /api/orders', () => {
     expect(res.status).toBe(502);
     expect(res.body).toEqual({ error: 'payment processor declined the order' });
     expect(mockedQuery).not.toHaveBeenCalled();
+  });
+
+  it('returns 502 without calling the processor when the rate is unavailable', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockedCurve.mockRejectedValue(new Error('failed to fetch treasury data'));
+
+    const res = await request(buildApp()).post('/api/orders').send({ term: '5yr', amount: 100 });
+
+    expect(res.status).toBe(502);
+    expect(mockedSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/orders/quote', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedCurve.mockReset();
+    mockedCurve.mockResolvedValue(CURVE);
+  });
+
+  it('returns the ticket at the current rate without writing anything', async () => {
+    const res = await request(buildApp()).get('/api/orders/quote?term=2yr&amount=1000000');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      term: '2yr',
+      amount: 1_000_000,
+      rate: 4,
+      rateDate: '2026-09-18',
+      estInterest: 80_000,
+    });
+    expect(res.body.settlementDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(res.body.maturityDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(mockedQuery).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid term or amount', async () => {
+    const badTerm = await request(buildApp()).get('/api/orders/quote?term=99yr&amount=100');
+    const badAmount = await request(buildApp()).get('/api/orders/quote?term=2yr&amount=-5');
+    const noAmount = await request(buildApp()).get('/api/orders/quote?term=2yr');
+
+    expect(badTerm.status).toBe(400);
+    expect(badAmount.status).toBe(400);
+    expect(noAmount.status).toBe(400);
   });
 });
 

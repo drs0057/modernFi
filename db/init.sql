@@ -8,8 +8,12 @@ CREATE TABLE IF NOT EXISTS yield_curve_rates (
 );
 
 CREATE TABLE IF NOT EXISTS orders (
-  id           SERIAL PRIMARY KEY,
-  term         TEXT NOT NULL,
-  amount       NUMERIC(14,2) NOT NULL,
-  submitted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  id              SERIAL PRIMARY KEY,
+  term            TEXT NOT NULL,
+  amount          NUMERIC(14,2) NOT NULL,
+  rate            NUMERIC(5,3) NOT NULL,
+  settlement_date DATE NOT NULL,
+  maturity_date   DATE NOT NULL,
+  est_interest    NUMERIC(14,2) NOT NULL,
+  submitted_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
