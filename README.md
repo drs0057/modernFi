@@ -35,18 +35,20 @@ Three containers, wired together by `docker-compose.yml`:
 - **frontend** (React + Tailwind + Recharts) — single page: yield curve
   chart, order form, order history table.
 
-Data flow: Treasury CSV feed -> backend fetch on startup -> Postgres ->
-`GET /api/yield-curve/latest` -> chart. Orders flow straight from the form ->
-`POST /api/orders` -> Postgres -> history table.
+Data flow: `GET /api/yield-curve/latest` reads from Postgres. On a cold
+cache (table empty) it fetches the Treasury CSV feed once, upserts it, then
+serves from the DB from then on — a write-through cache, not a fetch-per-
+request. Orders flow straight from the form -> `POST /api/orders` ->
+Postgres -> history table.
 
 ## API
 
-| Method | Path                        | Purpose                                  |
-|--------|-----------------------------|-------------------------------------------|
-| GET    | `/api/yield-curve/latest`   | Latest yield curve, one point per term    |
-| POST   | `/api/yield-curve/refresh`  | Re-fetch the latest curve from Treasury   |
-| GET    | `/api/orders`               | All submitted orders, newest first        |
-| POST   | `/api/orders`               | Submit an order: `{ term, amount }`       |
+| Method | Path                       | Purpose                                 |
+| ------ | -------------------------- | --------------------------------------- |
+| GET    | `/api/yield-curve/latest`  | Latest yield curve, one point per term  |
+| POST   | `/api/yield-curve/refresh` | Re-fetch the latest curve from Treasury |
+| GET    | `/api/orders`              | All submitted orders, newest first      |
+| POST   | `/api/orders`              | Submit an order: `{ term, amount }`     |
 
 ## Schema
 
@@ -55,12 +57,13 @@ Data flow: Treasury CSV feed -> backend fetch on startup -> Postgres ->
 
 ## Scope notes
 
-This is a take-home MVP, built to a 4-6hr budget. Deliberately out of scope:
+Deliberately out of scope:
 
 - No auth — the app has a single implicit user, so order history is global.
 - Only the latest date's yield curve is fetched and stored, not full history.
-- No scheduled refresh beyond the fetch on backend startup (a manual
-  `POST /api/yield-curve/refresh` endpoint exists if you want to re-pull).
+- No scheduled or time-based cache invalidation — once a row exists, reads
+  never hit Treasury again. Use `POST /api/yield-curve/refresh` to force a
+  re-pull (e.g. once a new business day's rates are published).
 - No automated tests or CI.
 - No migration framework — schema is applied once via Postgres's built-in
   `docker-entrypoint-initdb.d` mount.
