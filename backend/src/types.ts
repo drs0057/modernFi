@@ -24,6 +24,14 @@ export const TERM_MONTHS: Record<Term, number> = {
 export interface YieldPoint {
   term: Term;
   rate: number;
+  prevRate: number | null;
+  changeBp: number | null;
+}
+
+export interface YieldCurve {
+  date: string;
+  prevDate: string | null;
+  points: YieldPoint[];
 }
 
 export interface Order {

@@ -44,37 +44,51 @@ export interface ParsedRow {
   points: { term: Term; rate: number }[];
 }
 
-export function parseCsv(text: string): ParsedRow {
-  const lines = text.trim().split('\n');
-  const headers = parseCsvLine(lines[0]);
-  const latestRow = parseCsvLine(lines[1]);
+// Treasury lists the newest date first. We keep the latest row plus the one
+// before it, so the UI can show the change since the previous business day.
+const ROWS_TO_KEEP = 2;
 
-  const date = parseIsoDate(latestRow[0]);
+function parseRow(headers: string[], line: string): ParsedRow {
+  const cells = parseCsvLine(line);
   const points: { term: Term; rate: number }[] = [];
 
   headers.forEach((header, i) => {
     const term = HEADER_TO_TERM[header];
     if (!term) return;
-    const rate = parseFloat(latestRow[i]);
+    const rate = parseFloat(cells[i]);
     if (Number.isFinite(rate)) {
       points.push({ term, rate });
     }
   });
 
-  return { date, points };
+  return { date: parseIsoDate(cells[0]), points };
 }
 
-export async function refreshYieldCurve(): Promise<{ date: string; inserted: number }> {
-  const csv = await fetchLatestCsv();
-  const { date, points } = parseCsv(csv);
+export function parseCsv(text: string): ParsedRow[] {
+  const lines = text.trim().split('\n');
+  const headers = parseCsvLine(lines[0]);
 
-  for (const point of points) {
-    await pool.query(
-      `INSERT INTO yield_curve_rates (date, term, rate, fetched_at) VALUES ($1, $2, $3, now())
-       ON CONFLICT (date, term) DO UPDATE SET rate = EXCLUDED.rate, fetched_at = now()`,
-      [date, point.term, point.rate]
-    );
+  return lines
+    .slice(1, 1 + ROWS_TO_KEEP)
+    .filter((line) => line.trim() !== '')
+    .map((line) => parseRow(headers, line));
+}
+
+export async function refreshYieldCurve(): Promise<{ dates: string[]; inserted: number }> {
+  const csv = await fetchLatestCsv();
+  const rows = parseCsv(csv);
+  let inserted = 0;
+
+  for (const { date, points } of rows) {
+    for (const point of points) {
+      await pool.query(
+        `INSERT INTO yield_curve_rates (date, term, rate, fetched_at) VALUES ($1, $2, $3, now())
+         ON CONFLICT (date, term) DO UPDATE SET rate = EXCLUDED.rate, fetched_at = now()`,
+        [date, point.term, point.rate]
+      );
+      inserted += 1;
+    }
   }
 
-  return { date, inserted: points.length };
+  return { dates: rows.map((row) => row.date), inserted };
 }
