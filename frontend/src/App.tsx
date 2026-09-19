@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getOrders, getYieldCurve, submitOrder } from './api';
-import { Order, Term, YieldCurve } from './types';
+import { OrderSortColumn, OrdersPage, Term, YieldCurve } from './types';
 import YieldCurveChart from './components/YieldCurveChart';
 import OrderPanel from './components/OrderPanel';
 import OrderHistory from './components/OrderHistory';
@@ -11,7 +11,14 @@ type Tab = 'market' | 'history';
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('market');
   const [curve, setCurve] = useState<YieldCurve | null>(null);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersPage, setOrdersPage] = useState<OrdersPage>({
+    orders: [],
+    total: 0,
+    page: 1,
+    pageSize: 10,
+    sortBy: 'submitted_at',
+    sortDir: 'desc',
+  });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [prefillTerm, setPrefillTerm] = useState<Term | undefined>(undefined);
@@ -26,8 +33,18 @@ export default function App() {
     }
   }
 
-  async function loadOrders() {
-    setOrders(await getOrders());
+  async function loadOrders(
+    page = 1,
+    sortBy: OrderSortColumn = ordersPage.sortBy,
+    sortDir: 'asc' | 'desc' = ordersPage.sortDir
+  ) {
+    setOrdersPage(await getOrders(page, ordersPage.pageSize, sortBy, sortDir));
+  }
+
+  function handleSortChange(column: OrderSortColumn) {
+    const nextDir =
+      ordersPage.sortBy === column && ordersPage.sortDir === 'asc' ? 'desc' : 'asc';
+    loadOrders(1, column, nextDir);
   }
 
   useEffect(() => {
@@ -37,7 +54,8 @@ export default function App() {
 
   async function handleOrderSubmitted(term: string, amount: number) {
     await submitOrder(term, amount);
-    await loadOrders();
+    // A new order sorts to the top, so jump back to page 1 to show it.
+    await loadOrders(1);
   }
 
   function openOrderPanel(term?: Term) {
@@ -85,7 +103,7 @@ export default function App() {
                 : 'border-transparent text-ink-muted hover:text-ink'
             }`}
           >
-            History
+            Order History
           </button>
         </nav>
 
@@ -109,7 +127,9 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'history' && <OrderHistory orders={orders} />}
+        {activeTab === 'history' && (
+          <OrderHistory data={ordersPage} onPageChange={loadOrders} onSortChange={handleSortChange} />
+        )}
       </main>
 
       <OrderPanel

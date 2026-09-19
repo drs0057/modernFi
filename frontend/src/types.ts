@@ -21,3 +21,15 @@ export interface Order {
   amount: number;
   submitted_at: string;
 }
+
+export type OrderSortColumn = 'term' | 'amount' | 'submitted_at';
+export type SortDirection = 'asc' | 'desc';
+
+export interface OrdersPage {
+  orders: Order[];
+  total: number;
+  page: number;
+  pageSize: number;
+  sortBy: OrderSortColumn;
+  sortDir: SortDirection;
+}

@@ -89,17 +89,78 @@ describe('GET /api/orders', () => {
     mockedQuery.mockReset();
   });
 
-  it('returns rows from the database ordered by submitted_at desc', async () => {
+  it('returns a page of orders with pagination and sort metadata, defaulting to page 1', async () => {
     const rows = [
       { id: 2, term: '2yr', amount: '50.00', submitted_at: '2026-09-19T01:00:00.000Z' },
       { id: 1, term: '5yr', amount: '100.00', submitted_at: '2026-09-18T00:00:00.000Z' },
     ];
-    mockedQuery.mockResolvedValue({ rows } as never);
+    mockedQuery
+      .mockResolvedValueOnce({ rows } as never)
+      .mockResolvedValueOnce({ rows: [{ count: 2 }] } as never);
 
     const res = await request(buildApp()).get('/api/orders');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual(rows);
-    expect(mockedQuery.mock.calls[0][0]).toMatch(/ORDER BY submitted_at DESC/);
+    expect(res.body).toEqual({
+      orders: rows,
+      total: 2,
+      page: 1,
+      pageSize: 10,
+      sortBy: 'submitted_at',
+      sortDir: 'desc',
+    });
+    expect(mockedQuery.mock.calls[0][0]).toMatch(/ORDER BY submitted_at desc/);
+    expect(mockedQuery.mock.calls[0][1]).toEqual([10, 0]);
+  });
+
+  it('honors page and pageSize query params and computes the right offset', async () => {
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [] } as never)
+      .mockResolvedValueOnce({ rows: [{ count: 25 }] } as never);
+
+    const res = await request(buildApp()).get('/api/orders?page=3&pageSize=5');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ orders: [], total: 25, page: 3, pageSize: 5 });
+    expect(mockedQuery.mock.calls[0][1]).toEqual([5, 10]);
+  });
+
+  it('clamps an oversized pageSize to the configured max', async () => {
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [] } as never)
+      .mockResolvedValueOnce({ rows: [{ count: 0 }] } as never);
+
+    const res = await request(buildApp()).get('/api/orders?pageSize=500');
+
+    expect(res.status).toBe(200);
+    expect(res.body.pageSize).toBe(50);
+  });
+
+  it('sorts by a whitelisted column and direction from query params', async () => {
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [] } as never)
+      .mockResolvedValueOnce({ rows: [{ count: 0 }] } as never);
+
+    const res = await request(buildApp()).get('/api/orders?sortBy=amount&sortDir=asc');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ sortBy: 'amount', sortDir: 'asc' });
+    expect(mockedQuery.mock.calls[0][0]).toMatch(/ORDER BY amount asc/);
+  });
+
+  it('falls back to the default sort when given a column outside the whitelist', async () => {
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [] } as never)
+      .mockResolvedValueOnce({ rows: [{ count: 0 }] } as never);
+
+    // A column name that isn't in SORTABLE_COLUMNS should never reach the
+    // SQL string, since it's built via string interpolation.
+    const res = await request(buildApp()).get(
+      '/api/orders?sortBy=id;%20DROP%20TABLE%20orders;--'
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ sortBy: 'submitted_at', sortDir: 'desc' });
+    expect(mockedQuery.mock.calls[0][0]).toMatch(/ORDER BY submitted_at desc/);
   });
 });
