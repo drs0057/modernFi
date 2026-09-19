@@ -13,6 +13,7 @@ export default {
         hairline: 'rgba(26,26,26,0.1)',
         'error-bg': '#FEF3F2',
         'error-text': '#B42318',
+        success: '#62C554',
       },
       fontFamily: {
         // ModernFi's site uses licensed fonts (Messina Sans, HW Cigars) we

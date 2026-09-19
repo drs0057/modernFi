@@ -4,6 +4,7 @@ import { Order, Term, YieldCurve } from './types';
 import YieldCurveChart from './components/YieldCurveChart';
 import OrderPanel from './components/OrderPanel';
 import OrderHistory from './components/OrderHistory';
+import OrderSuccessModal from './components/OrderSuccessModal';
 
 type Tab = 'market' | 'history';
 
@@ -15,6 +16,7 @@ export default function App() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [prefillTerm, setPrefillTerm] = useState<Term | undefined>(undefined);
   const [panelRequestId, setPanelRequestId] = useState(0);
+  const [successModalOpen, setSuccessModalOpen] = useState(false);
 
   async function loadCurve() {
     try {
@@ -42,6 +44,11 @@ export default function App() {
     setPrefillTerm(term);
     setPanelRequestId((id) => id + 1);
     setPanelOpen(true);
+  }
+
+  function handleOrderSuccess() {
+    setPanelOpen(false);
+    setSuccessModalOpen(true);
   }
 
   return (
@@ -109,6 +116,7 @@ export default function App() {
         open={panelOpen}
         onClose={() => setPanelOpen(false)}
         onSubmitted={handleOrderSubmitted}
+        onSubmitSuccess={handleOrderSuccess}
         initialTerm={prefillTerm}
         requestId={panelRequestId}
         onViewHistory={() => {
@@ -116,6 +124,8 @@ export default function App() {
           setActiveTab('history');
         }}
       />
+
+      <OrderSuccessModal open={successModalOpen} onClose={() => setSuccessModalOpen(false)} />
     </div>
   );
 }

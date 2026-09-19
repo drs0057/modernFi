@@ -6,6 +6,7 @@ export default function OrderPanel({
   open,
   onClose,
   onSubmitted,
+  onSubmitSuccess,
   initialTerm,
   requestId,
   onViewHistory,
@@ -13,6 +14,7 @@ export default function OrderPanel({
   open: boolean;
   onClose: () => void;
   onSubmitted: (term: string, amount: number) => Promise<void>;
+  onSubmitSuccess: () => void;
   initialTerm?: Term;
   requestId: number;
   onViewHistory: () => void;
@@ -57,7 +59,7 @@ export default function OrderPanel({
         <div className="flex-1 overflow-y-auto p-6">
           <OrderForm
             onSubmitted={onSubmitted}
-            onSuccess={onClose}
+            onSuccess={onSubmitSuccess}
             initialTerm={initialTerm}
             requestId={requestId}
           />
