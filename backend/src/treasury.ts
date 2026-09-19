@@ -39,12 +39,12 @@ function parseIsoDate(mmddyyyy: string): string {
   return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 }
 
-interface ParsedRow {
+export interface ParsedRow {
   date: string;
   points: { term: Term; rate: number }[];
 }
 
-function parseCsv(text: string): ParsedRow {
+export function parseCsv(text: string): ParsedRow {
   const lines = text.trim().split('\n');
   const headers = parseCsvLine(lines[0]);
   const latestRow = parseCsvLine(lines[1]);
