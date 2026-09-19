@@ -26,8 +26,8 @@ export default function YieldCurveChart({
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-lg font-semibold text-gray-800">Treasury Yield Curve</h2>
-      <p className="text-sm text-gray-500 mb-4">
+      <h2 className="text-lg font-semibold text-ink">Treasury Yield Curve</h2>
+      <p className="text-sm text-ink-muted mb-4">
         As of {date}
         {onPointClick && ' — click anywhere on the graph to start an order at that term'}
       </p>
@@ -38,19 +38,19 @@ export default function YieldCurveChart({
             onClick={handleClick}
             style={{ cursor: onPointClick ? 'pointer' : 'default' }}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="term" stroke="#6b7280" fontSize={12} />
-            <YAxis unit="%" stroke="#6b7280" fontSize={12} />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(26,26,26,0.08)" />
+            <XAxis dataKey="term" stroke="#4D4D4D" fontSize={12} />
+            <YAxis unit="%" stroke="#4D4D4D" fontSize={12} />
             <Tooltip
               formatter={(value: number) => [`${value}%`, 'Rate']}
-              cursor={onPointClick ? { stroke: '#2563eb', strokeOpacity: 0.12, strokeWidth: 44 } : true}
+              cursor={onPointClick ? { stroke: '#00A19C', strokeOpacity: 0.12, strokeWidth: 44 } : true}
             />
             <Line
               type="monotone"
               dataKey="rate"
-              stroke="#2563eb"
+              stroke="#00A19C"
               strokeWidth={2}
-              dot={{ r: 4, fill: '#2563eb' }}
+              dot={{ r: 4, fill: '#00A19C' }}
               activeDot={{ r: 7 }}
             />
           </LineChart>

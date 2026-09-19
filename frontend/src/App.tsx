@@ -43,27 +43,27 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200">
+    <div className="min-h-screen bg-canvas">
+      <header className="bg-white border-b border-hairline">
         <div className="max-w-5xl mx-auto px-6 py-4">
-          <h1 className="text-xl font-bold text-gray-900">ModernFi Liquidity Desk</h1>
+          <h1 className="text-xl font-bold text-ink">ModernFi Liquidity Desk</h1>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto p-6 space-y-6">
         {loadError && (
-          <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded p-4">
+          <div className="bg-error-bg border border-error-text/20 text-error-text text-sm rounded p-4">
             {loadError}
           </div>
         )}
 
-        <nav className="flex gap-6 border-b border-gray-200">
+        <nav className="flex gap-6 border-b border-hairline">
           <button
             onClick={() => setActiveTab('market')}
             className={`-mb-px border-b-2 pb-3 text-sm font-medium ${
               activeTab === 'market'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                ? 'border-electric text-electric'
+                : 'border-transparent text-ink-muted hover:text-ink'
             }`}
           >
             Market
@@ -72,8 +72,8 @@ export default function App() {
             onClick={() => setActiveTab('history')}
             className={`-mb-px border-b-2 pb-3 text-sm font-medium ${
               activeTab === 'history'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                ? 'border-electric text-electric'
+                : 'border-transparent text-ink-muted hover:text-ink'
             }`}
           >
             History
@@ -85,7 +85,7 @@ export default function App() {
             <div className="flex justify-end">
               <button
                 onClick={() => openOrderPanel()}
-                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded"
+                className="bg-electric hover:bg-electric-dark shadow-cta hover:shadow-cta-hover text-white text-sm font-medium px-4 py-2 rounded-full transition"
               >
                 Place Order
               </button>

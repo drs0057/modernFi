@@ -41,13 +41,13 @@ export default function OrderPanel({
           open ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">Submit Order</h2>
+        <div className="flex items-center justify-between border-b border-hairline px-6 py-4">
+          <h2 className="text-lg font-semibold text-ink">Submit Order</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="text-2xl leading-none text-gray-400 hover:text-gray-600"
+            className="text-2xl leading-none text-ink-muted hover:text-ink"
           >
             &times;
           </button>
@@ -57,7 +57,7 @@ export default function OrderPanel({
           <button
             type="button"
             onClick={onViewHistory}
-            className="mt-4 text-sm text-blue-600 hover:underline"
+            className="mt-4 text-sm text-electric hover:underline"
           >
             Order History
           </button>
