@@ -5,6 +5,22 @@ export const TERM_ORDER = [
 
 export type Term = typeof TERM_ORDER[number];
 
+export const TERM_MONTHS: Record<Term, number> = {
+  '1mo': 1,
+  '2mo': 2,
+  '3mo': 3,
+  '4mo': 4,
+  '6mo': 6,
+  '1yr': 12,
+  '2yr': 24,
+  '3yr': 36,
+  '5yr': 60,
+  '7yr': 84,
+  '10yr': 120,
+  '20yr': 240,
+  '30yr': 360,
+};
+
 export interface YieldPoint {
   term: Term;
   rate: number;
@@ -15,4 +31,14 @@ export interface Order {
   term: Term;
   amount: number;
   submitted_at: string;
+}
+
+export interface Ticket {
+  term: Term;
+  amount: number;
+  rate: number;
+  rateDate: string;
+  settlementDate: string;
+  maturityDate: string;
+  estInterest: number;
 }
