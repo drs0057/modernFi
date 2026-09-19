@@ -7,12 +7,14 @@ export default function OrderPanel({
   onClose,
   onSubmitted,
   initialTerm,
+  requestId,
   onViewHistory,
 }: {
   open: boolean;
   onClose: () => void;
   onSubmitted: (term: string, amount: number) => Promise<void>;
   initialTerm?: Term;
+  requestId: number;
   onViewHistory: () => void;
 }) {
   useEffect(() => {
@@ -53,7 +55,12 @@ export default function OrderPanel({
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-6">
-          <OrderForm onSubmitted={onSubmitted} onSuccess={onClose} initialTerm={initialTerm} />
+          <OrderForm
+            onSubmitted={onSubmitted}
+            onSuccess={onClose}
+            initialTerm={initialTerm}
+            requestId={requestId}
+          />
           <button
             type="button"
             onClick={onViewHistory}

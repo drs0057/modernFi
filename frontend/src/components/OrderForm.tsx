@@ -5,10 +5,12 @@ export default function OrderForm({
   onSubmitted,
   onSuccess,
   initialTerm,
+  requestId,
 }: {
   onSubmitted: (term: string, amount: number) => Promise<void>;
   onSuccess?: () => void;
   initialTerm?: Term;
+  requestId: number;
 }) {
   const [term, setTerm] = useState<Term>(initialTerm ?? TERM_ORDER[5]);
   const [amount, setAmount] = useState('');
@@ -16,10 +18,8 @@ export default function OrderForm({
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (initialTerm) {
-      setTerm(initialTerm);
-    }
-  }, [initialTerm]);
+    setTerm(initialTerm ?? TERM_ORDER[5]);
+  }, [requestId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

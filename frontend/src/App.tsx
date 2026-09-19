@@ -14,6 +14,7 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [prefillTerm, setPrefillTerm] = useState<Term | undefined>(undefined);
+  const [panelRequestId, setPanelRequestId] = useState(0);
 
   async function loadCurve() {
     try {
@@ -39,6 +40,7 @@ export default function App() {
 
   function openOrderPanel(term?: Term) {
     setPrefillTerm(term);
+    setPanelRequestId((id) => id + 1);
     setPanelOpen(true);
   }
 
@@ -108,6 +110,7 @@ export default function App() {
         onClose={() => setPanelOpen(false)}
         onSubmitted={handleOrderSubmitted}
         initialTerm={prefillTerm}
+        requestId={panelRequestId}
         onViewHistory={() => {
           setPanelOpen(false);
           setActiveTab('history');
