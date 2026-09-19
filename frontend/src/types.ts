@@ -1,3 +1,4 @@
+// Mirrors backend/src/types.ts and backend/src/terms.ts. Keep in sync.
 export const TERM_ORDER = [
   '1mo', '2mo', '3mo', '4mo', '6mo',
   '1yr', '2yr', '3yr', '5yr', '7yr', '10yr', '20yr', '30yr',

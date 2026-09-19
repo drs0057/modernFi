@@ -7,7 +7,9 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
-import { Term, YieldChanges, YieldPoint } from '../types';
+import type { CategoricalChartState } from 'recharts/types/chart/types';
+import { formatDate } from '../lib/format';
+import { Term, YieldChanges, YieldCurve, YieldPoint } from '../types';
 
 const PERIODS: { key: keyof YieldChanges; label: string }[] = [
   { key: 'd1', label: '1D' },
@@ -31,7 +33,15 @@ function ChangeValue({ bp }: { bp: number | null }) {
   );
 }
 
-function CurveTooltip({ active, payload }: { active?: boolean; payload?: { payload: YieldPoint }[] }) {
+function CurveTooltip({
+  active,
+  payload,
+  compareDates,
+}: {
+  active?: boolean;
+  payload?: { payload: YieldPoint }[];
+  compareDates: YieldCurve['compareDates'];
+}) {
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
 
@@ -42,7 +52,10 @@ function CurveTooltip({ active, payload }: { active?: boolean; payload?: { paylo
       <dl className="mt-2 min-w-[9rem] border-t border-hairline pt-2">
         {PERIODS.map(({ key, label }) => (
           <div key={key} className="flex items-center justify-between gap-6 py-0.5">
-            <dt className="text-xs text-ink-muted">{label}</dt>
+            <dt className="text-xs text-ink-muted">
+              {label}
+              {compareDates[key] && ` vs ${formatDate(compareDates[key]!)}`}
+            </dt>
             <dd className="font-medium tabular-nums">
               <ChangeValue bp={point.changes[key]} />
             </dd>
@@ -56,13 +69,15 @@ function CurveTooltip({ active, payload }: { active?: boolean; payload?: { paylo
 export default function YieldCurveChart({
   points,
   date,
+  compareDates,
   onPointClick,
 }: {
   points: YieldPoint[];
   date: string;
+  compareDates: YieldCurve['compareDates'];
   onPointClick?: (term: Term) => void;
 }) {
-  function handleClick(state: any) {
+  function handleClick(state: CategoricalChartState) {
     if (onPointClick && typeof state?.activeLabel === 'string') {
       onPointClick(state.activeLabel as Term);
     }
@@ -86,7 +101,7 @@ export default function YieldCurveChart({
             <XAxis dataKey="term" stroke="#4D4D4D" fontSize={12} />
             <YAxis unit="%" stroke="#4D4D4D" fontSize={12} />
             <Tooltip
-              content={<CurveTooltip />}
+              content={<CurveTooltip compareDates={compareDates} />}
               cursor={onPointClick ? { stroke: '#00A19C', strokeOpacity: 0.12, strokeWidth: 44 } : true}
             />
             <Line

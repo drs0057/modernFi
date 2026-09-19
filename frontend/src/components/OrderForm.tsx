@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, getQuote } from '../api';
-import { newIdempotencyKey } from '../lib/format';
+import { capitalize, newIdempotencyKey } from '../lib/format';
 import { Order, Term, TERM_ORDER, Ticket } from '../types';
 import OrderTicket from './OrderTicket';
+import Button from './ui/Button';
 
 const QUOTE_DEBOUNCE_MS = 300;
 
-function capitalize(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
+const FIELD_CLASS =
+  'w-full border border-ink/20 rounded px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-electric';
 
 function describeSubmitError(err: unknown): string {
   if (err instanceof ApiError) {
@@ -38,8 +38,9 @@ export default function OrderForm({
 
   // One key per order intent. It stays the same across retries, so if a
   // request times out but the server placed the order, the retry returns
-  // that order instead of creating a second one. It changes when the user
-  // edits the order, and after a successful submit.
+  // that order instead of creating a second one. It changes only when the
+  // user edits the term or amount, and after a successful submit. Reopening
+  // the panel clears the amount, so the next edit starts a new intent.
   const idempotencyKey = useRef(newIdempotencyKey());
   // A ref, not state: two fast clicks can both run before a state update renders.
   const inFlight = useRef(false);
@@ -48,9 +49,12 @@ export default function OrderForm({
     idempotencyKey.current = newIdempotencyKey();
   }
 
+  // The form stays mounted while the panel is closed. Reset the amount on
+  // each open so an old amount is never paired with a fresh key.
   useEffect(() => {
     setTerm(initialTerm ?? TERM_ORDER[5]);
-    startNewIntent();
+    setAmount('');
+    setError(null);
   }, [requestId]);
 
   useEffect(() => {
@@ -124,7 +128,7 @@ export default function OrderForm({
             setTerm(e.target.value as Term);
             startNewIntent();
           }}
-          className="w-full border border-ink/20 rounded px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-electric"
+          className={FIELD_CLASS}
         >
           {TERM_ORDER.map((t) => (
             <option key={t} value={t}>{t}</option>
@@ -144,7 +148,7 @@ export default function OrderForm({
           }}
           placeholder="1000000"
           autoFocus
-          className="w-full border border-ink/20 rounded px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-electric"
+          className={FIELD_CLASS}
         />
       </div>
       {quoteLoading ? (
@@ -163,13 +167,9 @@ export default function OrderForm({
       )}
       {quoteError && <p className="text-sm text-error-text">{quoteError}</p>}
       {error && <p className="text-sm text-error-text">{error}</p>}
-      <button
-        type="submit"
-        disabled={submitting}
-        className="bg-electric hover:bg-electric-dark disabled:bg-electric/40 shadow-cta hover:shadow-cta-hover text-white text-sm font-medium px-4 py-2 rounded-full transition"
-      >
+      <Button type="submit" disabled={submitting}>
         {submitting ? 'Submitting...' : 'Submit Order'}
-      </button>
+      </Button>
     </form>
   );
 }

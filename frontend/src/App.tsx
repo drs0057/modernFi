@@ -1,12 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getOrders, getYieldCurve, submitOrder } from './api';
-import { Order, OrderSortColumn, OrdersPage, Term, YieldCurve } from './types';
+import { Order, OrderSortColumn, OrdersPage, SortDirection, Term, YieldCurve } from './types';
 import YieldCurveChart from './components/YieldCurveChart';
 import OrderPanel from './components/OrderPanel';
 import OrderHistory from './components/OrderHistory';
 import OrderSuccessModal from './components/OrderSuccessModal';
+import Button from './components/ui/Button';
+import TabButton from './components/ui/TabButton';
 
 type Tab = 'market' | 'history';
+
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('market');
@@ -19,26 +25,42 @@ export default function App() {
     sortBy: 'submitted_at',
     sortDir: 'desc',
   });
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [curveError, setCurveError] = useState<string | null>(null);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [prefillTerm, setPrefillTerm] = useState<Term | undefined>(undefined);
   const [panelRequestId, setPanelRequestId] = useState(0);
   const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
 
+  // Only the newest orders request may update the table. A slow earlier
+  // response must not overwrite a later page or sort.
+  const latestOrdersRequest = useRef(0);
+
   async function loadCurve() {
     try {
       setCurve(await getYieldCurve());
+      setCurveError(null);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'failed to load yield curve');
+      setCurveError(errorMessage(err, 'failed to load yield curve'));
     }
   }
 
+  // Never throws. A failed load shows a banner and keeps the current table.
   async function loadOrders(
     page = 1,
     sortBy: OrderSortColumn = ordersPage.sortBy,
-    sortDir: 'asc' | 'desc' = ordersPage.sortDir
+    sortDir: SortDirection = ordersPage.sortDir
   ) {
-    setOrdersPage(await getOrders(page, ordersPage.pageSize, sortBy, sortDir));
+    const requestId = ++latestOrdersRequest.current;
+    try {
+      const data = await getOrders(page, ordersPage.pageSize, sortBy, sortDir);
+      if (requestId !== latestOrdersRequest.current) return;
+      setOrdersPage(data);
+      setOrdersError(null);
+    } catch (err) {
+      if (requestId !== latestOrdersRequest.current) return;
+      setOrdersError(errorMessage(err, 'failed to load orders'));
+    }
   }
 
   function handleSortChange(column: OrderSortColumn) {
@@ -55,8 +77,8 @@ export default function App() {
   async function handleOrderSubmitted(term: string, amount: number, idempotencyKey: string) {
     const order = await submitOrder(term, amount, idempotencyKey);
     // A new order sorts to the top, so jump back to page 1 to show it. The
-    // order is already placed, so a failed refresh must not read as a failed order.
-    await loadOrders(1).catch((err) => console.error('failed to refresh orders', err));
+    // order is already placed, and a failed refresh only shows a banner.
+    await loadOrders(1);
     return order;
   }
 
@@ -80,49 +102,37 @@ export default function App() {
       </header>
 
       <main className="max-w-6xl mx-auto p-6 space-y-6">
-        {loadError && (
-          <div className="bg-error-bg border border-error-text/20 text-error-text text-sm rounded p-4">
-            {loadError}
-          </div>
+        {[curveError, ordersError].map(
+          (message) =>
+            message && (
+              <div
+                key={message}
+                className="bg-error-bg border border-error-text/20 text-error-text text-sm rounded p-4"
+              >
+                {message}
+              </div>
+            )
         )}
 
         <nav className="flex gap-6 border-b border-hairline">
-          <button
-            onClick={() => setActiveTab('market')}
-            className={`-mb-px border-b-2 pb-3 text-sm font-medium ${
-              activeTab === 'market'
-                ? 'border-electric text-electric'
-                : 'border-transparent text-ink-muted hover:text-ink'
-            }`}
-          >
+          <TabButton active={activeTab === 'market'} onClick={() => setActiveTab('market')}>
             Market
-          </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`-mb-px border-b-2 pb-3 text-sm font-medium ${
-              activeTab === 'history'
-                ? 'border-electric text-electric'
-                : 'border-transparent text-ink-muted hover:text-ink'
-            }`}
-          >
+          </TabButton>
+          <TabButton active={activeTab === 'history'} onClick={() => setActiveTab('history')}>
             Order History
-          </button>
+          </TabButton>
         </nav>
 
         {activeTab === 'market' && (
           <div className="space-y-4">
             <div className="flex justify-end">
-              <button
-                onClick={() => openOrderPanel()}
-                className="bg-electric hover:bg-electric-dark shadow-cta hover:shadow-cta-hover text-white text-sm font-medium px-4 py-2 rounded-full transition"
-              >
-                Place Order
-              </button>
+              <Button onClick={() => openOrderPanel()}>Place Order</Button>
             </div>
             {curve && (
               <YieldCurveChart
                 points={curve.points}
                 date={curve.date}
+                compareDates={curve.compareDates}
                 onPointClick={openOrderPanel}
               />
             )}
