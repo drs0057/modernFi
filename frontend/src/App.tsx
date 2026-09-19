@@ -45,8 +45,8 @@ export default function App() {
   return (
     <div className="min-h-screen bg-canvas">
       <header className="bg-white border-b border-hairline">
-        <div className="max-w-5xl mx-auto px-6 py-4">
-          <h1 className="text-xl font-bold text-ink">ModernFi Liquidity Desk</h1>
+        <div className="max-w-5xl mx-auto px-6 py-2 flex items-center justify-center">
+          <img src="/modernfi-logo.png" alt="ModernFi" className="h-16 w-auto" />
         </div>
       </header>
 
