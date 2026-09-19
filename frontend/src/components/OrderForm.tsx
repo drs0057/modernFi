@@ -34,6 +34,7 @@ export default function OrderForm({
   const [submitting, setSubmitting] = useState(false);
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
   // One key per order intent. It stays the same across retries, so if a
   // request times out but the server placed the order, the retry returns
@@ -57,18 +58,26 @@ export default function OrderForm({
     if (amount === '' || !Number.isFinite(parsed) || parsed <= 0) {
       setTicket(null);
       setQuoteError(null);
+      setQuoteLoading(false);
       return;
     }
 
+    // Loading covers the debounce wait and the request, so the spinner shows
+    // as soon as the user types and never flickers off between keystrokes.
+    setQuoteLoading(true);
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        setTicket(await getQuote(term, parsed, controller.signal));
+        const quote = await getQuote(term, parsed, controller.signal);
+        if (controller.signal.aborted) return;
+        setTicket(quote);
         setQuoteError(null);
       } catch (err) {
         if (controller.signal.aborted) return;
         setTicket(null);
         setQuoteError(err instanceof ApiError ? capitalize(err.message) : 'Could not load quote.');
+      } finally {
+        if (!controller.signal.aborted) setQuoteLoading(false);
       }
     }, QUOTE_DEBOUNCE_MS);
 
@@ -138,7 +147,20 @@ export default function OrderForm({
           className="w-full border border-ink/20 rounded px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-electric"
         />
       </div>
-      {ticket && <OrderTicket ticket={ticket} />}
+      {quoteLoading ? (
+        <div
+          role="status"
+          className="flex items-center justify-center gap-2 rounded-lg border border-hairline bg-canvas p-4 text-sm text-ink-muted"
+        >
+          <svg className="h-4 w-4 animate-spin text-electric" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+          Calculating order details...
+        </div>
+      ) : (
+        ticket && <OrderTicket ticket={ticket} />
+      )}
       {quoteError && <p className="text-sm text-error-text">{quoteError}</p>}
       {error && <p className="text-sm text-error-text">{error}</p>}
       <button
