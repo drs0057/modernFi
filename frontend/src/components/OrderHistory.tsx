@@ -12,6 +12,27 @@ const COLUMNS: { key?: OrderSortColumn; label: string }[] = [
   { key: 'submitted_at', label: 'Submitted' },
 ];
 
+function PagerButton({
+  onClick,
+  disabled,
+  children,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="px-3 py-1 rounded border border-ink/20 text-ink hover:border-electric disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-ink/20"
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function OrderHistory({
   data,
   onPageChange,
@@ -35,25 +56,15 @@ export default function OrderHistory({
             <span>
               Showing {rangeStart}–{rangeEnd} of {total}
             </span>
-            <button
-              type="button"
-              onClick={() => onPageChange(page - 1)}
-              disabled={page <= 1}
-              className="px-3 py-1 rounded border border-ink/20 text-ink hover:border-electric disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-ink/20"
-            >
+            <PagerButton onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
               Previous
-            </button>
+            </PagerButton>
             <span>
               Page {page} of {totalPages}
             </span>
-            <button
-              type="button"
-              onClick={() => onPageChange(page + 1)}
-              disabled={page >= totalPages}
-              className="px-3 py-1 rounded border border-ink/20 text-ink hover:border-electric disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-ink/20"
-            >
+            <PagerButton onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
               Next
-            </button>
+            </PagerButton>
           </div>
         )}
       </div>

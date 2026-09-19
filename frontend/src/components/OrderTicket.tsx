@@ -1,8 +1,5 @@
 import { formatDate, formatRate, formatUsd } from '../lib/format';
-import { Ticket } from '../types';
-
-// A stored order has no rate date, so it is optional for display.
-export type TicketView = Omit<Ticket, 'rateDate'> & { rateDate?: string };
+import { TicketView } from '../lib/order';
 
 export default function OrderTicket({ ticket }: { ticket: TicketView }) {
   const rows: [string, string][] = [

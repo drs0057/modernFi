@@ -19,6 +19,10 @@ export function formatDate(iso: string): string {
   });
 }
 
+export function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 // crypto.randomUUID needs a secure context (https or localhost). Fall back
 // so the app still works when opened over plain http on a LAN address.
 export function newIdempotencyKey(): string {

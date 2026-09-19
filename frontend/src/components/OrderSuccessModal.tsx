@@ -1,5 +1,7 @@
+import { orderToTicketView } from '../lib/order';
 import { Order } from '../types';
 import OrderTicket from './OrderTicket';
+import Button from './ui/Button';
 
 export default function OrderSuccessModal({
   order,
@@ -30,32 +32,14 @@ export default function OrderSuccessModal({
           </div>
           <p className="text-center font-medium text-ink">Order successfully placed</p>
         </div>
-        <OrderTicket
-          ticket={{
-            term: order.term,
-            amount: Number(order.amount),
-            rate: Number(order.rate),
-            settlementDate: order.settlement_date,
-            maturityDate: order.maturity_date,
-            estInterest: Number(order.est_interest),
-          }}
-        />
+        <OrderTicket ticket={orderToTicketView(order)} />
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={onViewHistory}
-            className="flex-1 rounded-full border border-ink/20 px-4 py-2 text-sm font-medium text-ink hover:border-electric"
-          >
+          <Button type="button" variant="secondary" onClick={onViewHistory} className="flex-1">
             View history
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            autoFocus
-            className="flex-1 rounded-full bg-electric px-4 py-2 text-sm font-medium text-white shadow-cta transition hover:bg-electric-dark hover:shadow-cta-hover"
-          >
+          </Button>
+          <Button type="button" onClick={onClose} autoFocus className="flex-1">
             Done
-          </button>
+          </Button>
         </div>
       </div>
     </div>
