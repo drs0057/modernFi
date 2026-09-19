@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { pool } from '../db';
+import { submitToPaymentProcessor } from '../paymentProcessor';
 import { TERM_ORDER } from '../types';
 
 const router = Router();
@@ -12,6 +13,13 @@ router.post('/', async (req, res) => {
   }
   if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ error: 'amount must be a positive number' });
+  }
+
+  try {
+    await submitToPaymentProcessor();
+  } catch (err) {
+    console.error('payment processor declined order', err);
+    return res.status(502).json({ error: 'payment processor declined the order' });
   }
 
   const { rows } = await pool.query(

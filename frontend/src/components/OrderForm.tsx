@@ -37,7 +37,8 @@ export default function OrderForm({
       setAmount('');
       onSuccess?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to submit order');
+      console.error('order submission failed', err);
+      setError('There is a problem submitting the order.');
     } finally {
       setSubmitting(false);
     }
