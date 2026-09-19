@@ -110,4 +110,6 @@ Deliberately out of scope:
   `docker-entrypoint-initdb.d` mount, so this change needs `docker compose
   down -v` on an existing volume.
 
-<!-- Add the ~30s screen recording link here -->
+## Demo
+
+[Watch the ~30 second screen recording](https://www.loom.com/share/3b11748525524cc2aa2ab8b991f09b5c)
