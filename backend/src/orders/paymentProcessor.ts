@@ -11,8 +11,9 @@ function sleep(ms: number): Promise<void> {
 }
 
 // A real processor dedupes on the idempotency key, so a retry after a
-// timeout never charges twice. The mock accepts it and ignores it.
-export async function submitToPaymentProcessor(_idempotencyKey?: string): Promise<void> {
+// timeout never charges twice, even across backend processes. The mock
+// accepts the key and ignores it, so it does not dedupe.
+export async function submitToPaymentProcessor(_idempotencyKey: string): Promise<void> {
   const latency = MIN_LATENCY_MS + Math.random() * (MAX_LATENCY_MS - MIN_LATENCY_MS);
   await sleep(latency);
 

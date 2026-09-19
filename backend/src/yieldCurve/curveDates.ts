@@ -1,4 +1,4 @@
-import { addMonths, parseIso, toIso } from './ticket';
+import { addDays, addMonths, daysBetween } from '../lib/dates';
 
 // Treasury has no rows for weekends and holidays, so a comparison date falls
 // back to the nearest earlier business day. A stretch of 4 closed days is the
@@ -9,16 +9,6 @@ export interface CompareDates<T = string> {
   d1: T;
   m1: T;
   y1: T;
-}
-
-export function addDays(iso: string, days: number): string {
-  const date = parseIso(iso);
-  date.setUTCDate(date.getUTCDate() + days);
-  return toIso(date);
-}
-
-function daysBetween(later: string, earlier: string): number {
-  return Math.round((parseIso(later).getTime() - parseIso(earlier).getTime()) / 86_400_000);
 }
 
 // Calendar targets: one day, one month and one year before the latest date.

@@ -1,11 +1,4 @@
-import { addDays, compareTargets, pickCompareDates, pickOnOrBefore } from './curveDates';
-
-describe('addDays', () => {
-  it('moves across month and year boundaries', () => {
-    expect(addDays('2026-03-01', -1)).toBe('2026-02-28');
-    expect(addDays('2027-01-01', -1)).toBe('2026-12-31');
-  });
-});
+import { compareTargets, pickCompareDates, pickOnOrBefore } from './curveDates';
 
 describe('compareTargets', () => {
   it('returns 1 day, 1 month and 1 year before the latest date', () => {

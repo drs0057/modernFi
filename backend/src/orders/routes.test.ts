@@ -1,20 +1,20 @@
-import express from 'express';
 import request from 'supertest';
 
 jest.mock('../db', () => ({
   pool: { query: jest.fn() },
 }));
-jest.mock('../paymentProcessor', () => ({
+jest.mock('./paymentProcessor', () => ({
   submitToPaymentProcessor: jest.fn(),
 }));
-jest.mock('../curveService', () => ({
+jest.mock('../yieldCurve/curveService', () => ({
   getCurrentCurve: jest.fn(),
 }));
 
+import { createApp } from '../app';
 import { pool } from '../db';
-import { getCurrentCurve } from '../curveService';
-import { submitToPaymentProcessor } from '../paymentProcessor';
-import ordersRouter from './orders';
+import { CurveUnavailableError } from '../errors';
+import { getCurrentCurve } from '../yieldCurve/curveService';
+import { submitToPaymentProcessor } from './paymentProcessor';
 
 const mockedQuery = jest.mocked(pool.query);
 const mockedSubmit = jest.mocked(submitToPaymentProcessor);
@@ -46,15 +46,8 @@ function storedOrder(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function buildApp() {
-  const app = express();
-  app.use(express.json());
-  app.use('/api/orders', ordersRouter);
-  return app;
-}
-
 function post(body: unknown, key: string | null = KEY) {
-  const req = request(buildApp()).post('/api/orders');
+  const req = request(createApp()).post('/api/orders');
   if (key) req.set('Idempotency-Key', key);
   return req.send(body as object);
 }
@@ -203,7 +196,7 @@ describe('POST /api/orders', () => {
       .mockResolvedValueOnce({ rows: [] } as never) // lookup
       .mockResolvedValueOnce({ rows: [storedOrder()] } as never); // insert
 
-    const app = buildApp();
+    const app = createApp();
     const send = () =>
       request(app).post('/api/orders').set('Idempotency-Key', KEY).send({ term: '5yr', amount: 100 });
     const first = send().then((res) => res);
@@ -230,7 +223,7 @@ describe('POST /api/orders', () => {
       .mockResolvedValueOnce({ rows: [] } as never)
       .mockResolvedValueOnce({ rows: [storedOrder()] } as never);
 
-    const app = buildApp();
+    const app = createApp();
     const first = request(app)
       .post('/api/orders')
       .set('Idempotency-Key', KEY)
@@ -265,13 +258,62 @@ describe('POST /api/orders', () => {
 
   it('returns 502 without calling the processor when the rate is unavailable', async () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    mockedCurve.mockRejectedValue(new Error('failed to fetch treasury data'));
+    mockedCurve.mockRejectedValue(new CurveUnavailableError());
     mockedQuery.mockResolvedValueOnce({ rows: [] } as never);
 
     const res = await post({ term: '5yr', amount: 100 });
 
     expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: 'failed to fetch treasury data' });
     expect(mockedSubmit).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 JSON when the database fails', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockedQuery.mockRejectedValue(new Error('connection refused') as never);
+
+    const res = await post({ term: '5yr', amount: 100 });
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'internal error' });
+    expect(mockedSubmit).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 JSON for a malformed request body', async () => {
+    const res = await request(createApp())
+      .post('/api/orders')
+      .set('Idempotency-Key', KEY)
+      .set('Content-Type', 'application/json')
+      .send('{"term": ');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'invalid request body' });
+  });
+
+  it('returns 422 to a waiting duplicate whose amount differs, using the shared check', async () => {
+    let releaseProcessor: () => void = () => {};
+    mockedSubmit.mockImplementation(
+      () => new Promise<void>((resolve) => (releaseProcessor = resolve))
+    );
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [] } as never)
+      .mockResolvedValueOnce({ rows: [storedOrder()] } as never);
+
+    const app = createApp();
+    const first = request(app)
+      .post('/api/orders')
+      .set('Idempotency-Key', KEY)
+      .send({ term: '5yr', amount: 100 })
+      .then((res) => res);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const second = await request(app)
+      .post('/api/orders')
+      .set('Idempotency-Key', KEY)
+      .send({ term: '5yr', amount: 200 });
+    releaseProcessor();
+    await first;
+
+    expect(second.status).toBe(422);
   });
 });
 
@@ -283,7 +325,7 @@ describe('GET /api/orders/quote', () => {
   });
 
   it('returns the ticket at the current rate without writing anything', async () => {
-    const res = await request(buildApp()).get('/api/orders/quote?term=2yr&amount=1000000');
+    const res = await request(createApp()).get('/api/orders/quote?term=2yr&amount=1000000');
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
@@ -299,9 +341,9 @@ describe('GET /api/orders/quote', () => {
   });
 
   it('rejects an invalid term or amount', async () => {
-    const badTerm = await request(buildApp()).get('/api/orders/quote?term=99yr&amount=100');
-    const badAmount = await request(buildApp()).get('/api/orders/quote?term=2yr&amount=-5');
-    const noAmount = await request(buildApp()).get('/api/orders/quote?term=2yr');
+    const badTerm = await request(createApp()).get('/api/orders/quote?term=99yr&amount=100');
+    const badAmount = await request(createApp()).get('/api/orders/quote?term=2yr&amount=-5');
+    const noAmount = await request(createApp()).get('/api/orders/quote?term=2yr');
 
     expect(badTerm.status).toBe(400);
     expect(badAmount.status).toBe(400);
@@ -314,6 +356,20 @@ describe('GET /api/orders', () => {
     mockedQuery.mockReset();
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('returns 500 JSON instead of crashing when the database fails', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockedQuery.mockRejectedValue(new Error('connection refused') as never);
+
+    const res = await request(createApp()).get('/api/orders');
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'internal error' });
+  });
+
   it('returns a page of orders with pagination and sort metadata, defaulting to page 1', async () => {
     const rows = [
       { id: 2, term: '2yr', amount: '50.00', submitted_at: '2026-09-19T01:00:00.000Z' },
@@ -323,7 +379,7 @@ describe('GET /api/orders', () => {
       .mockResolvedValueOnce({ rows } as never)
       .mockResolvedValueOnce({ rows: [{ count: 2 }] } as never);
 
-    const res = await request(buildApp()).get('/api/orders');
+    const res = await request(createApp()).get('/api/orders');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -343,7 +399,7 @@ describe('GET /api/orders', () => {
       .mockResolvedValueOnce({ rows: [] } as never)
       .mockResolvedValueOnce({ rows: [{ count: 25 }] } as never);
 
-    const res = await request(buildApp()).get('/api/orders?page=3&pageSize=5');
+    const res = await request(createApp()).get('/api/orders?page=3&pageSize=5');
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ orders: [], total: 25, page: 3, pageSize: 5 });
@@ -355,7 +411,7 @@ describe('GET /api/orders', () => {
       .mockResolvedValueOnce({ rows: [] } as never)
       .mockResolvedValueOnce({ rows: [{ count: 0 }] } as never);
 
-    const res = await request(buildApp()).get('/api/orders?pageSize=500');
+    const res = await request(createApp()).get('/api/orders?pageSize=500');
 
     expect(res.status).toBe(200);
     expect(res.body.pageSize).toBe(50);
@@ -366,7 +422,7 @@ describe('GET /api/orders', () => {
       .mockResolvedValueOnce({ rows: [] } as never)
       .mockResolvedValueOnce({ rows: [{ count: 0 }] } as never);
 
-    const res = await request(buildApp()).get('/api/orders?sortBy=amount&sortDir=asc');
+    const res = await request(createApp()).get('/api/orders?sortBy=amount&sortDir=asc');
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ sortBy: 'amount', sortDir: 'asc' });
@@ -380,7 +436,7 @@ describe('GET /api/orders', () => {
 
     // A column name that isn't in SORTABLE_COLUMNS should never reach the
     // SQL string, since it's built via string interpolation.
-    const res = await request(buildApp()).get(
+    const res = await request(createApp()).get(
       '/api/orders?sortBy=id;%20DROP%20TABLE%20orders;--'
     );
 

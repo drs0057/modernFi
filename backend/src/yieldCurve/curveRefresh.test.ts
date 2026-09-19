@@ -1,86 +1,13 @@
-jest.mock('./db', () => ({
+jest.mock('../db', () => ({
   pool: { query: jest.fn() },
 }));
 
-import { pool } from './db';
-import { parseCsv, refreshYieldCurve, selectRowsToStore } from './treasury';
+import { pool } from '../db';
+import { refreshYieldCurve, selectRowsToStore } from './curveRefresh';
+import { HEADER_ROW, csvRow } from './testCsv';
+import { parseCsv } from './treasuryClient';
 
 const mockedQuery = jest.mocked(pool.query);
-
-const HEADER_ROW =
-  'Date,"1 Mo","1.5 Month","2 Mo","3 Mo","4 Mo","6 Mo","1 Yr","2 Yr","3 Yr","5 Yr","7 Yr","10 Yr","20 Yr","30 Yr"';
-
-describe('parseCsv', () => {
-  it('maps the top data row to term codes and an ISO date', () => {
-    const row =
-      '09/17/2026,3.97,3.98,4.09,4.12,4.23,4.20,4.40,4.67,4.75,4.78,4.86,4.94,5.32,5.29';
-    const [result] = parseCsv(`${HEADER_ROW}\n${row}`);
-
-    expect(result.date).toBe('2026-09-17');
-    expect(result.points).toEqual([
-      { term: '1mo', rate: 3.97 },
-      { term: '2mo', rate: 4.09 },
-      { term: '3mo', rate: 4.12 },
-      { term: '4mo', rate: 4.23 },
-      { term: '6mo', rate: 4.2 },
-      { term: '1yr', rate: 4.4 },
-      { term: '2yr', rate: 4.67 },
-      { term: '3yr', rate: 4.75 },
-      { term: '5yr', rate: 4.78 },
-      { term: '7yr', rate: 4.86 },
-      { term: '10yr', rate: 4.94 },
-      { term: '20yr', rate: 5.32 },
-      { term: '30yr', rate: 5.29 },
-    ]);
-  });
-
-  it('skips the 1.5 Month column since it is not one of our standard terms', () => {
-    const row =
-      '09/17/2026,3.97,3.98,4.09,4.12,4.23,4.20,4.40,4.67,4.75,4.78,4.86,4.94,5.32,5.29';
-    const [result] = parseCsv(`${HEADER_ROW}\n${row}`);
-
-    expect(result.points.find((p) => (p.term as string) === '1.5mo')).toBeUndefined();
-    expect(result.points).toHaveLength(13);
-  });
-
-  it('returns every data row, newest first', () => {
-    const rows = [
-      '09/17/2026,3.97,3.98,4.09,4.12,4.23,4.20,4.40,4.67,4.75,4.78,4.86,4.94,5.32,5.29',
-      '09/16/2026,3.90,3.91,4.00,4.05,4.10,4.15,4.30,4.60,4.70,4.75,4.80,4.90,5.30,5.25',
-      '09/15/2026,3.80,3.81,3.90,3.95,4.00,4.05,4.20,4.50,4.60,4.65,4.70,4.80,5.20,5.15',
-    ];
-    const result = parseCsv(`${HEADER_ROW}\n${rows.join('\n')}`);
-
-    expect(result.map((row) => row.date)).toEqual(['2026-09-17', '2026-09-16', '2026-09-15']);
-    expect(result[0].points.find((p) => p.term === '1mo')?.rate).toBe(3.97);
-    expect(result[1].points.find((p) => p.term === '1mo')?.rate).toBe(3.9);
-  });
-
-  it('returns no rows for a header-only CSV', () => {
-    expect(parseCsv(HEADER_ROW)).toEqual([]);
-  });
-
-  it('returns a single row when the CSV has only one data row', () => {
-    const row =
-      '01/02/2027,3.97,3.98,4.09,4.12,4.23,4.20,4.40,4.67,4.75,4.78,4.86,4.94,5.32,5.29';
-    const result = parseCsv(`${HEADER_ROW}\n${row}`);
-
-    expect(result).toHaveLength(1);
-  });
-
-  it('drops a term whose cell is blank or non-numeric instead of throwing', () => {
-    const row =
-      '09/17/2026,3.97,3.98,4.09,4.12,4.23,4.20,4.40,4.67,4.75,N/A,4.86,4.94,5.32,5.29';
-    const [result] = parseCsv(`${HEADER_ROW}\n${row}`);
-
-    expect(result.points.find((p) => p.term === '5yr')).toBeUndefined();
-    expect(result.points).toHaveLength(12);
-  });
-});
-
-function csvRow(mmddyyyy: string, oneYear = '4.40') {
-  return `${mmddyyyy},3.97,3.98,4.09,4.12,4.23,4.20,${oneYear},4.67,4.75,4.78,4.86,4.94,5.32,5.29`;
-}
 
 describe('selectRowsToStore', () => {
   it('keeps the latest date and its 1 day, 1 month and 1 year comparison dates', () => {
@@ -132,7 +59,11 @@ describe('refreshYieldCurve', () => {
     global.fetch = realFetch;
   });
 
-  const storedDates = () => [...new Set(mockedQuery.mock.calls.map(([, params]) => (params as string[])[0]))];
+  // The upsert is one statement whose first parameter is the array of dates.
+  const storedDates = () => {
+    const [, params] = mockedQuery.mock.calls[0];
+    return [...new Set((params as [string[]])[0])];
+  };
 
   it('fetches this year and last year and stores only the four comparison dates', async () => {
     stubFetch({
@@ -146,6 +77,50 @@ describe('refreshYieldCurve', () => {
     expect(result.dates).toEqual(['2026-09-18', '2026-09-17', '2026-08-18', '2025-09-18']);
     expect(storedDates()).toEqual(['2026-09-18', '2026-09-17', '2026-08-18', '2025-09-18']);
     expect(result.inserted).toBe(4 * 13);
+  });
+
+  it('writes every row in one statement so readers never see a partial curve', async () => {
+    stubFetch({
+      '2026': [HEADER_ROW, csvRow('09/18/2026'), csvRow('09/17/2026')].join('\n'),
+      '2025': [HEADER_ROW, csvRow('09/18/2025')].join('\n'),
+    });
+
+    await refreshYieldCurve();
+
+    expect(mockedQuery).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(String(sql)).toMatch(/ON CONFLICT \(date, term\)/);
+    const [dates, terms, rates] = params as [string[], string[], number[]];
+    expect(dates).toHaveLength(3 * 13);
+    expect(terms).toHaveLength(3 * 13);
+    expect(rates).toHaveLength(3 * 13);
+  });
+
+  it('gives every Treasury request a timeout signal', async () => {
+    stubFetch({
+      '2026': [HEADER_ROW, csvRow('09/18/2026')].join('\n'),
+      '2025': [HEADER_ROW, csvRow('09/18/2025')].join('\n'),
+    });
+
+    await refreshYieldCurve();
+
+    for (const [, init] of jest.mocked(global.fetch).mock.calls) {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+    }
+  });
+
+  it('picks the year from New York time, not the server zone', async () => {
+    // 03:00 UTC on Jan 1 is still Dec 31 evening in New York.
+    jest.setSystemTime(new Date('2027-01-01T03:00:00Z'));
+    stubFetch({
+      '2026': [HEADER_ROW, csvRow('12/31/2026')].join('\n'),
+      '2025': [HEADER_ROW, csvRow('12/31/2025')].join('\n'),
+    });
+
+    await refreshYieldCurve();
+
+    const years = jest.mocked(global.fetch).mock.calls.map(([url]) => /csv\/(\d{4})\//.exec(String(url))![1]);
+    expect(years.sort()).toEqual(['2025', '2026']);
   });
 
   it('still succeeds when the prior year fetch fails, leaving 1Y unavailable', async () => {

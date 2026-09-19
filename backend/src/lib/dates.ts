@@ -1,5 +1,3 @@
-import { TERM_MONTHS, Term, Ticket } from './types';
-
 const SETTLEMENT_TZ = 'America/New_York';
 
 // ISO date strings (YYYY-MM-DD) are handled as UTC midnights so that local
@@ -21,6 +19,16 @@ export function todayInSettlementZone(now: Date): string {
     month: '2-digit',
     day: '2-digit',
   }).format(now);
+}
+
+export function addDays(iso: string, days: number): string {
+  const date = parseIso(iso);
+  date.setUTCDate(date.getUTCDate() + days);
+  return toIso(date);
+}
+
+export function daysBetween(later: string, earlier: string): number {
+  return Math.round((parseIso(later).getTime() - parseIso(earlier).getTime()) / 86_400_000);
 }
 
 // Treasuries settle T+1. Weekends are skipped, exchange holidays are not modeled.
@@ -46,33 +54,4 @@ export function addMonths(iso: string, months: number): string {
   ).getUTCDate();
   date.setUTCDate(Math.min(day, daysInTargetMonth));
   return toIso(date);
-}
-
-// Simple interest to maturity: amount * rate * years, done in integer cents.
-export function estimateInterest(amount: number, ratePercent: number, termMonths: number): number {
-  const cents = Math.round(amount * 100);
-  const interestCents = Math.round((cents * ratePercent * termMonths) / (100 * 12));
-  return interestCents / 100;
-}
-
-export function buildTicket(input: {
-  term: Term;
-  amount: number;
-  rate: number;
-  rateDate: string;
-  now?: Date;
-}): Ticket {
-  const { term, amount, rate, rateDate, now = new Date() } = input;
-  const settlementDate = addBusinessDays(todayInSettlementZone(now), 1);
-  const termMonths = TERM_MONTHS[term];
-
-  return {
-    term,
-    amount,
-    rate,
-    rateDate,
-    settlementDate,
-    maturityDate: addMonths(settlementDate, termMonths),
-    estInterest: estimateInterest(amount, rate, termMonths),
-  };
 }
