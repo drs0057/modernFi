@@ -4,12 +4,12 @@ const SETTLEMENT_TZ = 'America/New_York';
 
 // ISO date strings (YYYY-MM-DD) are handled as UTC midnights so that local
 // timezone and DST never shift the day.
-function parseIso(iso: string): Date {
+export function parseIso(iso: string): Date {
   const [year, month, day] = iso.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day));
 }
 
-function toIso(date: Date): string {
+export function toIso(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
